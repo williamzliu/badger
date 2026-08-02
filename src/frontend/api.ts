@@ -25,6 +25,10 @@ async function http<T>(method: string, url: string, body?: unknown): Promise<T> 
   return response.json() as Promise<T>;
 }
 
+export async function health(): Promise<{ ok: boolean; live: boolean }> {
+  return http('GET', '/health');
+}
+
 export function storedSessionId(): string | null {
   return localStorage.getItem(SESSION_KEY);
 }

@@ -126,6 +126,9 @@ export default function CreateScreen() {
 
   return (
     <div className="page">
+      <div className={`mode-banner ${snap.mode === 'live' ? 'is-live' : 'is-mock'}`}>
+        {snap.mode === 'live' ? '● LIVE — sends real messages and calls' : 'REHEARSAL — scripted simulation'}
+      </div>
       <Masthead kicker="Group coordination, delegated" />
       <div className="create-body">
         <h1 className="create-title">What should your group commit&nbsp;to?</h1>
@@ -210,9 +213,11 @@ export default function CreateScreen() {
           <button className="link" onClick={() => setRows((prev) => [...prev, { ...EMPTY_ROW }])}>
             Add participant
           </button>
-          <button className="link" onClick={loadDemo}>
-            Load demo scenario
-          </button>
+          {snap.mode === 'mock' && (
+            <button className="link" onClick={loadDemo}>
+              Load demo scenario
+            </button>
+          )}
         </div>
         {problems.length > 0 && (
           <ul className="form-problems">

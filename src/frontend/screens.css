@@ -613,3 +613,25 @@
   font-weight: 600;
   margin-bottom: 18px;
 }
+.mode-banner {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 20;
+  padding: 7px 11px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font: 700 11px/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mode-banner.is-live {
+  color: #8f1d14;
+  background: #fff4ef;
+}
+
+.mode-banner.is-mock {
+  color: var(--muted);
+  background: var(--paper);
+}

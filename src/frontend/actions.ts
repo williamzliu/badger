@@ -22,6 +22,7 @@ function mode(): Mode {
 
 export function setMode(next: Mode) {
   localStorage.setItem('badger.mode', next);
+  localStorage.setItem('badger.mode.operator', next);
   location.reload();
 }
 
