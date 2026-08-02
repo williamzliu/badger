@@ -13,28 +13,58 @@ const session: Session = {
   candidates: [{ id: 'candidate', theater: 'AMC', time: 'Friday 9 PM', slot: 'friday', format: 'IMAX', price: 20, location: 'SF' }],
   participants: [{ id: 'person', sessionId: 'session', name: 'Alex', phone: '+15550000123', required: true, status: 'NEEDS_FOLLOWUP' }],
 };
+let history: Record<string, unknown>[] = [];
+const requests: Array<Record<string, unknown>> = [];
 let authorization = '';
-let requestBody = '';
-const planner = new SailPlanner({
+let turn = 0;
+const fetchImpl: typeof fetch = async (_url, init) => {
+  authorization = new Headers(init?.headers).get('authorization') ?? '';
+  requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+  turn += 1;
+  const action = turn === 1 ? 'REQUEST_FLEXIBILITY' : turn === 2 ? 'PROPOSE_PLAN' : 'COMMIT_PLAN';
+  return new Response(JSON.stringify({ output: [{
+    type: 'function_call',
+    call_id: `call_${turn}`,
+    name: 'coordinate_group',
+    arguments: JSON.stringify({
+      action,
+      candidateId: 'candidate',
+      participantId: turn === 1 ? 'person' : null,
+      message: turn === 1 ? 'Could Friday at 9 work?' : turn === 2 ? 'Friday at 9 is the plan. Reply YES.' : 'Locked: Friday at 9.',
+      reason: 'Best valid option',
+    }),
+  }] }), { status: 200 });
+};
+const config = {
   apiKey: 'sail-secret',
-  fetch: async (_url, init) => {
-    authorization = new Headers(init?.headers).get('authorization') ?? '';
-    requestBody = String(init?.body);
-    return new Response(JSON.stringify({ output: [{
-      type: 'function_call',
-      name: 'recommend_action',
-      arguments: JSON.stringify({
-        action: 'REQUEST_FLEXIBILITY',
-        candidateId: 'candidate',
-        participantId: 'person',
-        message: 'Could Friday at 9 work?',
-        reason: 'Only open conflict',
-      }),
-    }] }), { status: 200 });
-  },
-});
-const decision = await planner.recommend(session);
+  fetch: fetchImpl,
+  loadHistory: () => history,
+  saveHistory: (_sessionId: string, next: Record<string, unknown>[]) => { history = next; },
+};
+
+const firstPlanner = new SailPlanner(config);
+const flexibility = await firstPlanner.recommend(session);
+await firstPlanner.recordOutcome(session.id, flexibility, { ok: true, detail: 'Message sent' });
+assert.equal(flexibility.participantId, 'person');
+
+session.status = 'PROPOSING';
+session.participants[0]!.status = 'PROPOSED';
+const restartedPlanner = new SailPlanner(config);
+const proposal = await restartedPlanner.recommend(session);
+await restartedPlanner.recordOutcome(session.id, proposal, { ok: true, detail: 'Proposal sent' });
+
+session.status = 'COMMITTED';
+session.participants[0]!.status = 'CONFIRMED';
+const commitmentPlanner = new SailPlanner(config);
+const commitment = await commitmentPlanner.recommend(session);
+await commitmentPlanner.recordOutcome(session.id, commitment, { ok: true, detail: 'Commitment sent' });
+
 assert.equal(authorization, 'Bearer sail-secret');
-assert.equal(decision.participantId, 'person');
-assert.equal(requestBody.includes('+15550000123'), false);
-console.info('Sail planner test passed');
+assert.equal(proposal.action, 'PROPOSE_PLAN');
+assert.equal(commitment.action, 'COMMIT_PLAN');
+assert.equal(JSON.stringify(requests).includes('+15550000123'), false);
+const secondInput = requests[1]?.input as Record<string, unknown>[];
+assert.ok(secondInput.some((item) => item.type === 'function_call' && item.call_id === 'call_1'));
+assert.ok(secondInput.some((item) => item.type === 'function_call_output' && item.call_id === 'call_1'));
+assert.equal(history.at(-1)?.type, 'function_call_output');
+console.info('Sail long-lived planner test passed');

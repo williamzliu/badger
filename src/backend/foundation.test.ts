@@ -13,4 +13,6 @@ assert.equal(store.receiveWebhook('cartesia', 'webhook-1'), true);
 assert.equal(store.receiveWebhook('spectrum', 'webhook-1'), false);
 store.releaseWebhook('cartesia', 'webhook-1');
 assert.equal(store.receiveWebhook('cartesia', 'webhook-1'), false);
+store.saveSailHistory(session.id, [{ role: 'user', content: 'state update' }]);
+assert.deepEqual(store.getSailHistory(session.id), [{ role: 'user', content: 'state update' }]);
 console.info('foundation test passed');

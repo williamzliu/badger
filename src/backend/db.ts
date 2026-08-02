@@ -56,6 +56,12 @@ export function openDatabase(filename: string) {
       metadata_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS sail_conversations (
+      session_id TEXT PRIMARY KEY,
+      history_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES sessions(id)
+    );
   `);
   return db;
 }

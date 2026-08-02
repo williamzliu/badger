@@ -9,7 +9,7 @@ Badger coordinates a group commitment (for example, “See The Odyssey this week
 - **Cartesia** provisions the US phone number and handles calls, transcription, speech, and interruptions.
 - **OpenAI** drives each short one-person voice interview and produces structured preferences.
 - **Photon Spectrum** sends and receives one-to-one iMessage, with managed SMS/RCS fallback.
-- **Sail** optionally phrases the proposal or targeted follow-up using a strict structured tool result.
+- **Sail** is the long-lived group coordinator. Badger persists its full Responses conversation per session, including state updates, strict tool calls, and execution outcomes.
 - **The Fastify backend** compares constraints, chooses the plan, and owns commitment; AI never changes group state by itself.
 
 ## Local setup
@@ -31,6 +31,7 @@ Important values:
 - `CARTESIA_FROM_NUMBER_ID` is the Cartesia phone-number **ID**, not its visible `+1…` number.
 - `SPECTRUM_PROJECT_ID` and `SPECTRUM_PROJECT_SECRET` come from Photon project settings.
 - `BADGER_TOOL_SECRET` must match the secret accepted by `/internal/preferences`.
+- `SAIL_API_KEY` is required in live mode. `SAIL_MODEL` defaults to `zai-org/GLM-5.2-FP8` with the low-latency `asap` window.
 - `PUBLIC_BASE_URL` and the deployed agent’s `BADGER_BACKEND_URL` must be public HTTPS URLs for live callbacks.
 
 For a safe UI-only rehearsal, keep:
@@ -48,7 +49,7 @@ BADGER_DEMO_MODE=false
 PUBLIC_BASE_URL=https://your-public-backend.example
 ```
 
-With live mode on, `POST /sessions/:id/start` sends every opening message, schedules staggered calls, and keeps the Spectrum reply stream running. A missing live credential fails startup with the exact variable name instead of silently running a fake path.
+With live mode on, `POST /sessions/:id/start` sends every opening message, schedules staggered calls, and keeps the Spectrum reply stream running. Sail then chooses `REQUEST_FLEXIBILITY`, `PROPOSE_PLAN`, and `COMMIT_PLAN` actions across one persisted conversation. The backend validates the selected candidate and target before executing every action. A missing live credential—including Sail—fails startup with the exact variable name instead of silently running a fake path.
 
 ## Frontend
 

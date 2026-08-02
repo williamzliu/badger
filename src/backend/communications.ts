@@ -8,7 +8,7 @@ import {
 } from '../voice/spectrum.js';
 import { CartesiaWebhookProcessor, type WebhookProcessResult } from '../voice/webhooks.js';
 import { EventLog } from './events.js';
-import { type GroupPlanner, SailPlanner } from './sail.js';
+import { type GroupPlanner, type PlannerDecision, SailPlanner } from './sail.js';
 import { SessionStore } from './sessions.js';
 import { BadgerWorkflow } from './state-machine.js';
 
@@ -28,7 +28,7 @@ type LiveCommunicationsConfig = {
   cartesia: CartesiaClient;
   spectrum: SpectrumMessagingClient;
   cartesiaWebhookSecret: string;
-  planner?: GroupPlanner;
+  planner: GroupPlanner;
   callDelayMs?: number;
   callStaggerMs?: number;
 };
@@ -112,29 +112,21 @@ export class LiveCommunications implements Communications {
       const target = session.participants.find((participant) => participant.status === 'NEEDS_FOLLOWUP');
       const candidate = session.candidates.find((item) => item.id === session.selectedCandidateId);
       if (!target || !candidate) return;
-      let message = `Would ${candidate.time} at ${candidate.theater} work for you? Reply YES or tell me what blocks you.`;
-      try {
-        const decision = await this.config.planner?.recommend(session);
-        if (decision) message = decision.message;
-      } catch (error) {
-        this.integrationFailure(session, target, 'Sail planning', error);
-      }
-      await this.safeSend(session, target, message, `flex:${session.id}:${candidate.id}:${target.id}`);
+      const fallback = `Would ${candidate.time} at ${candidate.theater} work for you? Reply YES or tell me what blocks you.`;
+      const planned = await this.plannedMessage(session, fallback, target);
+      const sent = await this.safeSend(session, target, planned.message, `flex:${session.id}:${candidate.id}:${target.id}`);
+      await this.recordPlannerOutcome(session, planned.decision, sent, sent ? 'Flexibility request sent' : 'Flexibility request failed');
       return;
     }
     if (session.status === 'PROPOSING') {
       const candidate = session.candidates.find((item) => item.id === session.selectedCandidateId);
       if (!candidate) return;
-      let message = MESSAGE_COPY.proposal(candidate.time, candidate.theater);
-      try {
-        const decision = await this.config.planner?.recommend(session);
-        if (decision) message = decision.message;
-      } catch (error) {
-        this.integrationFailure(session, undefined, 'Sail planning', error);
-      }
-      await Promise.all(session.participants
+      const planned = await this.plannedMessage(session, MESSAGE_COPY.proposal(candidate.time, candidate.theater));
+      const sends = await Promise.all(session.participants
         .filter((participant) => participant.required && participant.status === 'PROPOSED')
-        .map((participant) => this.safeSend(session, participant, message, `proposal:${session.id}:${candidate.id}:${participant.id}`)));
+        .map((participant) => this.safeSend(session, participant, planned.message, `proposal:${session.id}:${candidate.id}:${participant.id}`)));
+      const sent = sends.every(Boolean);
+      await this.recordPlannerOutcome(session, planned.decision, sent, sent ? 'Proposal sent to all required participants' : 'One or more proposal messages failed');
     }
   }
 
@@ -143,9 +135,12 @@ export class LiveCommunications implements Communications {
     const candidate = session.candidates.find((item) => item.id === session.selectedCandidateId);
     if (!candidate) return;
     const required = session.participants.filter((participant) => participant.required);
-    const message = MESSAGE_COPY.commitment(candidate.time, candidate.theater, required.length, required.length);
-    await Promise.all(session.participants.map((participant) =>
-      this.safeSend(session, participant, message, `commit:${session.id}:${candidate.id}:${participant.id}`)));
+    const fallback = MESSAGE_COPY.commitment(candidate.time, candidate.theater, required.length, required.length);
+    const planned = await this.plannedMessage(session, fallback);
+    const sends = await Promise.all(session.participants.map((participant) =>
+      this.safeSend(session, participant, planned.message, `commit:${session.id}:${candidate.id}:${participant.id}`)));
+    const sent = sends.every(Boolean);
+    await this.recordPlannerOutcome(session, planned.decision, sent, sent ? 'Commitment sent to all participants' : 'One or more commitment messages failed');
   }
 
   handleCartesiaWebhook(secret: string | undefined, body: unknown): Promise<WebhookProcessResult> {
@@ -244,11 +239,51 @@ export class LiveCommunications implements Communications {
     }, (event) => { this.config.events.record(event); });
   }
 
-  private async safeSend(session: Session, participant: Participant, body: string, key: string): Promise<void> {
+  private async safeSend(session: Session, participant: Participant, body: string, key: string): Promise<boolean> {
     try {
       await this.send(participant, body, key);
+      return true;
     } catch (error) {
       this.integrationFailure(session, participant, 'message', error);
+      return false;
+    }
+  }
+
+  private async plannedMessage(
+    session: Session,
+    fallback: string,
+    participant?: Participant,
+  ): Promise<{ message: string; decision?: PlannerDecision }> {
+    try {
+      const decision = await this.config.planner.recommend(session);
+      this.config.events.append(session.id, 'planner.decision', `Sail chose ${decision.action.toLowerCase().replaceAll('_', ' ')}`, {
+        ...(participant ? { participantId: participant.id } : {}),
+        action: decision.action,
+        candidateId: decision.candidateId,
+        reason: decision.reason,
+      });
+      return { message: decision.message, decision };
+    } catch (error) {
+      this.integrationFailure(session, participant, 'Sail coordination', error);
+      return { message: fallback };
+    }
+  }
+
+  private async recordPlannerOutcome(
+    session: Session,
+    decision: PlannerDecision | undefined,
+    ok: boolean,
+    detail: string,
+  ): Promise<void> {
+    if (!decision) return;
+    try {
+      await this.config.planner.recordOutcome(session.id, decision, { ok, detail });
+      this.config.events.append(session.id, 'planner.outcome', 'Sail action executed', {
+        action: decision.action,
+        ok,
+      });
+    } catch (error) {
+      this.integrationFailure(session, undefined, 'Sail history persistence', error);
     }
   }
 
@@ -280,13 +315,13 @@ export function createConfiguredCommunications(input: {
   // The Cartesia-hosted agent posts directly to /internal/preferences. Refuse
   // live startup rather than exposing that state-changing route without auth.
   requiredEnv('BADGER_TOOL_SECRET');
-  const planner = process.env.SAIL_API_KEY?.trim()
-    ? new SailPlanner({
-      apiKey: process.env.SAIL_API_KEY,
-      model: process.env.SAIL_MODEL,
-      baseUrl: process.env.SAIL_BASE_URL,
-    })
-    : undefined;
+  const planner = new SailPlanner({
+    apiKey: requiredEnv('SAIL_API_KEY'),
+    model: process.env.SAIL_MODEL,
+    baseUrl: process.env.SAIL_BASE_URL,
+    loadHistory: (sessionId) => input.sessions.getSailHistory(sessionId),
+    saveHistory: (sessionId, history) => input.sessions.saveSailHistory(sessionId, history),
+  });
   return new LiveCommunications({
     ...input,
     cartesia: new CartesiaClient({
@@ -300,7 +335,7 @@ export function createConfiguredCommunications(input: {
       projectSecret: requiredEnv('SPECTRUM_PROJECT_SECRET'),
     }),
     cartesiaWebhookSecret: requiredEnv('CARTESIA_WEBHOOK_SECRET'),
-    ...(planner ? { planner } : {}),
+    planner,
     callDelayMs: positiveNumber(process.env.BADGER_CALL_DELAY_MS, 10_000),
     callStaggerMs: positiveNumber(process.env.BADGER_CALL_STAGGER_MS, 1_000),
   });

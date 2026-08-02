@@ -38,6 +38,8 @@ await communications?.contact(session);
 
 `LiveCommunications` sends opening messages, waits `BADGER_CALL_DELAY_MS`, staggers calls by `BADGER_CALL_STAGGER_MS`, persists call correlation, consumes Cartesia webhooks and Spectrum replies, sends missed-call fallbacks, targets one blocker, broadcasts the proposal, and sends the final commitment.
 
+In live mode, Sail is a required multi-turn coordinator. Each session's complete Responses conversation is stored in SQLite and resent on every turn. Sail emits one strict `coordinate_group` tool call; deterministic code validates its action, candidate, and participant before messaging, then appends a `function_call_output` describing the real execution result. A restart reloads the same conversation rather than creating a stateless planner turn.
+
 All participants must have consented before invoking either provider.
 
 The Free and Pro Spectrum plans use shared managed lines, so different participants may see different sender numbers. Badger uses one-to-one conversations; creating group chats requires a dedicated Spectrum line.

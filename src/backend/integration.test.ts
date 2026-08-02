@@ -89,6 +89,18 @@ const live = new LiveCommunications({
   }),
   spectrum: new SpectrumMessagingClient({ projectId: 'project', projectSecret: 'secret' }, inboundFactory),
   cartesiaWebhookSecret: 'webhook',
+  planner: {
+    async recommend(current) {
+      return {
+        action: current.status === 'COMMITTED' ? 'COMMIT_PLAN' : 'PROPOSE_PLAN',
+        candidateId: current.selectedCandidateId!,
+        participantId: null,
+        message: 'Badger coordination message',
+        reason: 'Validated test action',
+      };
+    },
+    async recordOutcome() {},
+  },
 });
 await live.start();
 for (let attempt = 0; attempt < 20 && liveStore.get(draft.id)?.status !== 'COMMITTED'; attempt += 1) {
@@ -96,4 +108,26 @@ for (let attempt = 0; attempt < 20 && liveStore.get(draft.id)?.status !== 'COMMI
 }
 assert.equal(liveStore.get(draft.id)?.status, 'COMMITTED');
 await live.stop();
+
+const liveEnv = {
+  BADGER_LIVE_MODE: 'true',
+  BADGER_TOOL_SECRET: 'tool',
+  CARTESIA_API_KEY: 'cartesia',
+  CARTESIA_AGENT_ID: 'agent',
+  CARTESIA_FROM_NUMBER_ID: 'number',
+  CARTESIA_WEBHOOK_SECRET: 'webhook',
+  SPECTRUM_PROJECT_ID: 'spectrum',
+  SPECTRUM_PROJECT_SECRET: 'secret',
+};
+const previousEnv = Object.fromEntries(Object.keys(liveEnv).map((key) => [key, process.env[key]]));
+for (const [key, value] of Object.entries(liveEnv)) process.env[key] = value;
+const previousSailKey = process.env.SAIL_API_KEY;
+delete process.env.SAIL_API_KEY;
+assert.throws(() => createServer(':memory:'), /SAIL_API_KEY is required/);
+for (const [key, value] of Object.entries(previousEnv)) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+if (previousSailKey === undefined) delete process.env.SAIL_API_KEY;
+else process.env.SAIL_API_KEY = previousSailKey;
 console.info('integration wiring test passed');

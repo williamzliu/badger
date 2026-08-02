@@ -176,6 +176,24 @@ export class SessionStore {
     return row ? JSON.parse(row.metadata_json) as CallMetadata : undefined;
   }
 
+  getSailHistory(sessionId: string): Record<string, unknown>[] {
+    const row = this.db.prepare('SELECT history_json FROM sail_conversations WHERE session_id=?').get(sessionId) as
+      | { history_json: string }
+      | undefined;
+    if (!row) return [];
+    const parsed = JSON.parse(row.history_json) as unknown;
+    if (!Array.isArray(parsed)) throw new Error(`Invalid Sail history for session ${sessionId}`);
+    return parsed as Record<string, unknown>[];
+  }
+
+  saveSailHistory(sessionId: string, history: Record<string, unknown>[]): void {
+    this.db.prepare(`
+      INSERT INTO sail_conversations (session_id, history_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET history_json=excluded.history_json, updated_at=excluded.updated_at
+    `).run(sessionId, JSON.stringify(history), new Date().toISOString());
+  }
+
   receiveWebhook(provider: string, id: string): boolean {
     if (!id) return false;
     try {
