@@ -81,7 +81,7 @@ input {
 /* ── Type ─────────────────────────────────────────────────────────── */
 .display {
   font-family: var(--display);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   letter-spacing: -0.02em;
   line-height: 1.02;

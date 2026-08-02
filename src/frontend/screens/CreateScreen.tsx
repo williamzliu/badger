@@ -87,7 +87,10 @@ function InviteeRow({
     }
   };
   return (
-    <div className={`p-row${isHost ? ' is-host' : ''}`}>
+    <div
+      className={`p-row${isHost ? ' is-host' : ''}${editing ? '' : ' is-clickable'}`}
+      onClick={editing ? undefined : onEdit}
+    >
       {editing ? (
         <>
           <input
@@ -149,7 +152,10 @@ function InviteeRow({
         <button
           className="icon-btn is-danger"
           type="button"
-          onClick={onRemove}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove?.();
+          }}
           disabled={!canRemove}
           aria-label={`Remove ${label}`}
         >

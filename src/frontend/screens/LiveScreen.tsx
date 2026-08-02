@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { IconCheck } from '@tabler/icons-react';
 import type { Participant, ParticipantStatus } from '../../shared/types';
 import { useBadger, type BadgerSnapshot, type FeedItem } from '../store';
@@ -99,25 +100,31 @@ function FeedRow({ item, lead }: { item: FeedItem; lead: boolean }) {
 
 export default function LiveScreen() {
   const snap = useBadger();
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  // The log grows from the bottom; keep the newest item in view as it arrives.
+  useEffect(() => {
+    const el = feedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [snap.feed.length]);
+
   const session = snap.session;
   if (!session) return null;
   const story = narrative(snap);
+  // Store keeps the feed newest-first; render oldest→newest so new items land
+  // at the bottom, and the newest (last) row is the lead.
+  const feed = [...snap.feed].reverse();
 
   return (
-    <div className="page">
+    <div className="live-page">
       <Masthead
         meta={`${session.goal} · for ${session.hostName}`}
         live={`Live ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}
       />
-      <div className="live-head">
-        <h1 className="display live-headline">{story.headline}</h1>
-        <div className="live-sub">{story.sub}</div>
-        <button className="btn btn-ghost live-reset" type="button" onClick={restartSession}>
-          Start over
-        </button>
-      </div>
       <div className="live-grid">
-        <div className="live-left">
+        <section className="live-card live-left">
+          <h1 className="display live-headline">{story.headline}</h1>
+          <div className="live-sub">{story.sub}</div>
           <div className="stat">
             <span className="stat-n">
               {snap.respondedCount}
@@ -132,8 +139,11 @@ export default function LiveScreen() {
               <RosterRow key={p.id} participant={p} />
             ))}
           </div>
-        </div>
-        <div className="live-right">
+          <button className="btn btn-ghost live-reset" type="button" onClick={restartSession}>
+            Start over
+          </button>
+        </section>
+        <section className="live-card live-right">
           <section className="sail-trace" aria-live="polite">
             <div className="sail-trace-head">
               <span className="sail-mark">S</span>
@@ -162,21 +172,25 @@ export default function LiveScreen() {
               />
             )}
           </section>
-          <div className="feed-list">
-            {snap.feed.length === 0 ? (
-              <RotatingStatus
-                className="feed-empty"
-                phrases={[
-                  'Badger is bothering people now…',
-                  'Making “we should hang” legally binding…',
-                  'Turning friendship into a scheduling problem…',
-                ]}
-              />
-            ) : (
-              snap.feed.map((item, i) => <FeedRow key={item.id} item={item} lead={i === 0} />)
-            )}
+          <div className="feed-scroll" ref={feedRef}>
+            <div className="feed-list">
+              {feed.length === 0 ? (
+                <RotatingStatus
+                  className="feed-empty"
+                  phrases={[
+                    'Badger is bothering people now…',
+                    'Making “we should hang” legally binding…',
+                    'Turning friendship into a scheduling problem…',
+                  ]}
+                />
+              ) : (
+                feed.map((item, i) => (
+                  <FeedRow key={item.id} item={item} lead={i === feed.length - 1} />
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

@@ -69,6 +69,15 @@
   border-bottom: 1px solid var(--rule);
 }
 
+/* A display row is clickable to edit. */
+.p-row.is-clickable {
+  cursor: pointer;
+}
+
+.p-row.is-clickable:hover .p-cell:first-child {
+  color: var(--navy);
+}
+
 /* Inputs and display cells share the same box height so toggling a row
    between display and edit never shifts columns vertically. Display text
    sits flush at the column edge (aligned with the labels / idea / add-row);
@@ -117,12 +126,13 @@
   font-weight: 600;
 }
 
-/* Add-row shares the participant rows' vertical rhythm. */
+/* Add-row shares the participant rows' vertical rhythm, with extra breathing
+   room above so it doesn't crowd the last row's divider. */
 .add-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
+  padding: 20px 0 4px;
   color: var(--ink-3);
   font-size: 16px;
   font-weight: 500;
@@ -200,7 +210,7 @@
 }
 
 .plan-headline {
-  font-weight: 700;
+  font-weight: 600;
   font-size: clamp(40px, 6.4vw, 76px);
   margin-bottom: 26px;
 }
@@ -281,14 +291,46 @@
   }
 }
 
-/* ── Live ─────────────────────────────────────────────────────────── */
-.live-head {
-  padding: 30px 0 24px;
+/* ── Live (full-height two-column cards) ──────────────────────────── */
+.live-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0 clamp(20px, 4vw, 48px) clamp(20px, 3vh, 32px);
+}
+
+.live-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) 1.4fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 26px;
+  padding-top: 26px;
+}
+
+@media (max-width: 900px) {
+  .live-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.live-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 34px 36px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.live-left {
+  display: flex;
+  flex-direction: column;
 }
 
 .live-headline {
-  font-size: clamp(30px, 4vw, 46px);
-  max-width: 900px;
+  font-size: clamp(30px, 3.4vw, 44px);
+  max-width: 460px;
 }
 
 .live-sub {
@@ -298,34 +340,23 @@
 }
 
 .live-reset {
-  margin-top: 20px;
-}
-
-.live-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 1fr) 1.35fr;
-  gap: 28px;
-  padding-bottom: 56px;
-}
-
-@media (max-width: 900px) {
-  .live-grid {
-    grid-template-columns: 1fr;
-  }
+  align-self: flex-start;
+  margin-top: 22px;
 }
 
 .stat {
   display: flex;
   align-items: baseline;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 14px;
+  margin-top: auto;
+  margin-bottom: 22px;
 }
 
 .stat-n {
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   color: var(--ink);
-  font-size: clamp(52px, 6vw, 76px);
+  font-size: clamp(28px, 3vw, 40px);
   line-height: 0.9;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -393,9 +424,14 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  background: #fafafa;
+  overflow: hidden;
 }
 
+/* Sail reasoning pins to the top while the log scrolls beneath it. */
 .sail-trace {
+  flex: none;
   padding: 16px 18px;
   margin-bottom: 18px;
   border: 1px solid var(--border);
@@ -453,9 +489,22 @@
   border-top: none;
 }
 
-.feed-list {
-  overflow-y: auto;
+/* Scroll region for the log; the list is bottom-anchored so a short log sits
+   at the bottom and grows upward, new items appended at the bottom. */
+.feed-scroll {
+  flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.feed-list {
+  margin-top: auto;
 }
 
 .feed-item {
@@ -585,10 +634,59 @@
 }
 
 /* ── Committed ────────────────────────────────────────────────────── */
+.commit-page {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Friends photo emerges from the bottom, fading up into the white page. */
+.commit-page::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 78%;
+  background: url('../assets/sailboat_background_blurred.png') center bottom / cover no-repeat;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24%);
+  mask-image: linear-gradient(to bottom, transparent, #000 24%);
+  pointer-events: none;
+}
+
+.commit-back {
+  position: absolute;
+  top: 28px;
+  left: 32px;
+  z-index: 2;
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  color: var(--ink);
+  transition: background 140ms ease;
+}
+
+.commit-back:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.commit-body {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding-top: 16vh;
+  animation: rise 420ms ease both;
+}
+
 .commit-headline {
-  font-size: clamp(60px, 10vw, 130px);
-  letter-spacing: -0.03em;
-  animation: rise 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  font-size: clamp(44px, 6vw, 84px);
+  letter-spacing: -0.02em;
 }
 
 .commit-word {
@@ -600,46 +698,28 @@
 .commit-word::after {
   content: '';
   position: absolute;
-  left: 2px;
-  right: 2px;
-  bottom: 6px;
-  height: 8px;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+  border-radius: 2px;
   background: var(--navy);
-  opacity: 0.16;
-  z-index: -1;
   transform-origin: left;
-  animation: draw 650ms 550ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: draw 600ms 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .commit-plan {
   font-size: clamp(18px, 2.4vw, 24px);
   color: var(--ink-2);
-  margin-top: 24px;
-  animation: rise 400ms ease 350ms both;
+  margin-top: 22px;
+  animation: rise 400ms ease 300ms both;
 }
 
 .commit-sub {
   margin-top: 12px;
   font-size: 14px;
   color: var(--ink-3);
-  animation: rise 400ms ease 600ms both;
-}
-
-.commit-home {
-  margin-top: 28px;
-  animation: rise 400ms ease 800ms both;
-}
-
-.commit-tagline {
-  margin-top: 64px;
-  font-size: 16px;
-  color: var(--ink-2);
-  animation: rise 500ms ease 1000ms both;
-}
-
-.commit-tagline b {
-  color: var(--navy);
-  font-weight: 700;
+  animation: rise 400ms ease 520ms both;
 }
 
 /* ── Demo console ─────────────────────────────────────────────────── */

@@ -1,3 +1,4 @@
+import { IconArrowLeft } from '@tabler/icons-react';
 import { useBadger } from '../store';
 import { discardDraft } from '../actions';
 import { formatCandidateLabel, formatCandidateTime } from '../../shared/display';
@@ -13,23 +14,22 @@ export default function CommitScreen() {
   const confirmed = required.filter((p) => p.status === 'CONFIRMED').length;
 
   return (
-    <div className="stage is-center">
-      <h1 className="display commit-headline">
-        {confirmed}/{required.length} <span className="commit-word">committed.</span>
-      </h1>
-      {plan && (
-        <div className="commit-plan">
-          {[formatCandidateTime(plan.time), plan.theater, plan.format !== 'Activity' ? formatCandidateLabel(plan.format) : null]
-            .filter(Boolean)
-            .join(' · ')}
-        </div>
-      )}
-      <div className="commit-sub">Confirmation texts are on their way</div>
-      <button className="btn btn-ghost commit-home" type="button" onClick={discardDraft}>
-        Start another Badger
+    <div className="commit-page">
+      <button className="commit-back" type="button" onClick={discardDraft} aria-label="Back">
+        <IconArrowLeft size={26} stroke={2} />
       </button>
-      <div className="commit-tagline">
-        You don't ask the group. You send <b>Badger</b>.
+      <div className="commit-body">
+        <h1 className="display commit-headline">
+          {confirmed}/{required.length} <span className="commit-word">committed</span>
+        </h1>
+        {plan && (
+          <div className="commit-plan">
+            {[formatCandidateTime(plan.time), plan.theater, plan.format !== 'Activity' ? formatCandidateLabel(plan.format) : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+        )}
+        <div className="commit-sub">Confirmation texts are on their way</div>
       </div>
     </div>
   );
