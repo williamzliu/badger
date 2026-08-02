@@ -35,6 +35,9 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
+      torph:
+        specifier: ^0.0.10
+        version: 0.0.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
@@ -1208,6 +1211,23 @@ packages:
   toad-cache@3.7.4:
     resolution: {integrity: sha512-m1TdR/rvT7kgGJZhspNtXdsdYk0fddFpJJFlG5s+UkPFo6lkLoZ3YLOaovPYjq1R75NP5JfeTlSHaOsE09peCg==}
     engines: {node: '>=20'}
+
+  torph@0.0.10:
+    resolution: {integrity: sha512-8ru2j0+3WWdjTi7teZdwJr0XIeTULr4RfBHePr0UQ6b6tLtBNnLvsqAYCy8NEHs7CU3JLTdh04XP2ycVOU9wMQ==}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
+      svelte: '>=5'
+      vue: '>=3'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
 
   ts-error@1.0.6:
     resolution: {integrity: sha512-tLJxacIQUM82IR7JO1UUkKlYuUTmoY9HBJAmNWFzheSlDS5SPMcNIepejHJa4BpPQLAcbRhRf3GDJzyj6rbKvA==}
@@ -2422,6 +2442,11 @@ snapshots:
       picomatch: 4.0.5
 
   toad-cache@3.7.4: {}
+
+  torph@0.0.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    optionalDependencies:
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   ts-error@1.0.6: {}
 
