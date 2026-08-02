@@ -245,6 +245,54 @@ assert.equal(orchestrationEvents.list(orchestrationSession.id).some((event) => e
 assert.equal(orchestrationEvents.list(orchestrationSession.id).some((event) => event.type === 'call.requested'), true);
 await orchestrated.stop();
 
+// A RESOLVING session must repair a missing follow-up on every watchdog pass,
+// while the persisted idempotency event prevents duplicate texts.
+const recoveryDb = openDatabase(':memory:');
+const recoveryStore = new SessionStore(recoveryDb);
+const recoveryEvents = new EventLog(recoveryDb);
+const recoveryWorkflow = new BadgerWorkflow(recoveryStore, recoveryEvents);
+const recoveryDraft = recoveryStore.create({ hostName: 'Host', goal: 'weekend plan' });
+recoveryStore.addParticipant(recoveryDraft, { name: 'Flexible', phone: '+15550000801' });
+recoveryStore.addParticipant(recoveryDraft, { name: 'Friday only', phone: '+15550000802' });
+const recoverySession = recoveryStore.get(recoveryDraft.id)!;
+recoveryWorkflow.start(recoverySession);
+recoveryWorkflow.recordPreferences(recoverySession, recoverySession.participants[0]!, {
+  availability: ['saturday_afternoon'], hardVetoes: [], preferences: [], flexibility: 1, summary: 'Can flex',
+});
+recoveryWorkflow.recordPreferences(recoverySession, recoverySession.participants[1]!, {
+  availability: ['friday_after_8'], hardVetoes: [], preferences: [], flexibility: 0, summary: 'Friday only',
+});
+assert.equal(recoverySession.status, 'RESOLVING');
+const recoveryBodies: string[] = [];
+const recoveryTransport: SpectrumTransportFactory = async () => ({
+  async sendText(_to, body) {
+    recoveryBodies.push(body);
+    return { messageId: `recovery-${recoveryBodies.length}`, status: 'sent', service: 'iMessage' };
+  },
+  async *inbound() {},
+  async stop() {},
+});
+const recovering = new LiveCommunications({
+  sessions: recoveryStore,
+  events: recoveryEvents,
+  workflow: recoveryWorkflow,
+  cartesia: new CartesiaClient({
+    apiKey: 'key', agentId: 'agent', fromNumberId: 'number',
+    fetch: async () => new Response(JSON.stringify({ calls: [] }), { status: 200 }),
+  }),
+  spectrum: new SpectrumMessagingClient({ projectId: 'project', projectSecret: 'secret' }, recoveryTransport),
+  cartesiaWebhookSecret: 'webhook',
+  planner: {
+    async recommend() { throw new Error('not needed'); },
+    async recordOutcome() {},
+  },
+});
+const reconcile = recovering as unknown as { reconcileInterruptedSessions(): Promise<void> };
+await reconcile.reconcileInterruptedSessions();
+await reconcile.reconcileInterruptedSessions();
+assert.equal(recoveryBodies.length, 1);
+assert.match(recoveryBodies[0]!, /Would .* work for you/);
+
 const liveEnv = {
   BADGER_LIVE_MODE: 'true',
   BADGER_TOOL_SECRET: 'tool',

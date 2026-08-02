@@ -9,8 +9,12 @@ import { BadgerWorkflow, matchesCandidateConstraint, matchesSlot } from './state
 const db=openDatabase(':memory:'), store=new SessionStore(db), events=new EventLog(db), workflow=new BadgerWorkflow(store,events);
 assert.equal(matchesSlot('sunday_anytime','sunday_evening'),true);
 assert.equal(matchesSlot('sunday_anytime','saturday_evening'),false);
+assert.equal(matchesSlot('every_evening_6_to_10','sunday_evening'),true);
+assert.equal(matchesSlot('every_evening_6_to_10','sunday_afternoon'),false);
 assert.equal(matchesCandidateConstraint('outside_san_francisco',{id:'sf',theater:'Balboa',time:'Sunday 3 PM',slot:'sunday_afternoon',format:'Digital',price:0,location:'San Francisco, CA'}),false);
 assert.equal(matchesCandidateConstraint('outside_san_francisco',{id:'sea',theater:'SIFF',time:'Sunday 7 PM',slot:'sunday_evening',format:'70mm',price:0,location:'Seattle, WA'}),true);
+assert.equal(matchesCandidateConstraint('outside_every_evening_6_to_10',{id:'sun-7',theater:'Balboa',time:'Sunday 7 PM',slot:'sunday_evening',format:'Digital',price:0,location:'San Francisco, CA'}),false);
+assert.equal(matchesCandidateConstraint('outside_every_evening_6_to_10',{id:'sun-3',theater:'Balboa',time:'Sunday 3 PM',slot:'sunday_afternoon',format:'Digital',price:0,location:'San Francisco, CA'}),true);
 const created=store.create({hostName:'Host',goal:'Demo'});
 store.addParticipant(created,{name:'Alex',phone:'+15550000001'});
 store.addParticipant(created,{name:'Priya',phone:'+15550000002'});

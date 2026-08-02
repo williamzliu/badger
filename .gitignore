@@ -15,3 +15,5 @@ coverage/
 .npm/
 .pnpm-store/
 .vite/
+
+brag-output/

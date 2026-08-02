@@ -239,7 +239,8 @@ export class LiveCommunications implements Communications {
   private readonly preparing = new Set<string>();
   private readonly reviewQueued = new Set<string>();
   private readonly reviewing = new Set<string>();
-  private readonly activeCalls = new Set<string>();
+  private readonly activeCalls = new Map<string, number>();
+  private readonly recoveryAttempts = new Map<string, number>();
   private readonly webhook: CartesiaWebhookProcessor;
   private started = false;
 
@@ -272,7 +273,7 @@ export class LiveCommunications implements Communications {
         this.background(this.onSpectrumEvent(event));
       },
     }));
-    this.background(this.recoverInterruptedSessions());
+    this.background(this.reconciliationLoop());
   }
 
   async stop(): Promise<void> {
@@ -326,7 +327,7 @@ export class LiveCommunications implements Communications {
         : 'None of the current options fit everyone. What other day or time could you make work?';
       // Never interrupt one conversation with another outreach attempt. The
       // completed-call recovery will send this same question after hangup.
-      if (this.activeCalls.has(`${session.id}:${provisionalTarget.id}`)) return;
+      if (this.hasActiveCall(`${session.id}:${provisionalTarget.id}`)) return;
       const execute = async () => {
         const fresh = this.config.sessions.get(session.id);
         const freshTarget = fresh?.participants.find((participant) => participant.id === provisionalTarget.id);
@@ -480,6 +481,8 @@ export class LiveCommunications implements Communications {
     } = {},
   ): Promise<boolean> {
     this.config.workflow.markCalling(session, participant);
+    const activeCallKey = `${session.id}:${participant.id}`;
+    this.activeCalls.set(activeCallKey, Date.now());
     try {
       const metadata: CallMetadata = {
         ...callMetadata(session, participant),
@@ -494,6 +497,7 @@ export class LiveCommunications implements Communications {
       this.config.sessions.rememberCall(placed.agentCallId, metadata);
       return true;
     } catch (error) {
+      this.activeCalls.delete(activeCallKey);
       const fresh = this.config.sessions.get(session.id);
       const freshParticipant = fresh?.participants.find((item) => item.id === participant.id);
       if (fresh && freshParticipant) {
@@ -536,7 +540,7 @@ export class LiveCommunications implements Communications {
     const isFlexibilityCall = callContext?.purpose === 'flexibility';
     const activeCallKey = `${session.id}:${participant.id}`;
     if (event.type === 'call.started') {
-      this.activeCalls.add(activeCallKey);
+      this.activeCalls.set(activeCallKey, Date.now());
       this.config.workflow.markInCall(session, participant);
     }
     if (event.type === 'call.completed' || event.type === 'call.failed') {
@@ -598,8 +602,25 @@ export class LiveCommunications implements Communications {
     );
   }
 
-  private async recoverInterruptedSessions(): Promise<void> {
+  private hasActiveCall(key: string): boolean {
+    const startedAt = this.activeCalls.get(key);
+    if (startedAt === undefined) return false;
+    // A lost Cartesia completion webhook must not suppress recovery forever.
+    // Real availability calls should finish well inside this window.
+    if (Date.now() - startedAt < 120_000) return true;
+    this.activeCalls.delete(key);
+    return false;
+  }
+
+  private async reconciliationLoop(): Promise<void> {
     await delay(250, this.abort.signal);
+    while (!this.abort.signal.aborted) {
+      await this.reconcileInterruptedSessions();
+      await delay(3_000, this.abort.signal);
+    }
+  }
+
+  private async reconcileInterruptedSessions(): Promise<void> {
     for (const session of this.config.sessions.listActive()) {
       if (session.status !== 'RESOLVING') continue;
       const events = this.config.events.list(session.id);
@@ -612,13 +633,24 @@ export class LiveCommunications implements Communications {
         participant.status = 'NEEDS_FOLLOWUP';
         this.config.sessions.updateParticipant(participant);
       }
+      if (this.hasActiveCall(`${session.id}:${participant.id}`)) continue;
       const candidate = session.candidates.find((item) => item.id === session.selectedCandidateId);
       const question = candidate
         ? `Would ${displayCandidateTime(candidate.time)} at ${candidate.theater} work for you? If not, what nearby time could?`
-        : 'What other day or time could work?';
-      const key = `resume:flex:${session.id}:${candidate?.id ?? 'broaden'}:${participant.id}`;
-      if (events.some((event) => event.id === key)) continue;
-      await this.safeSend(session, participant, `${question} Reply STOP to opt out.`, key);
+        : 'None of the current options fit everyone. What other day or time could you make work?';
+      const key = `flex:${session.id}:${candidate?.id ?? 'broaden'}:${participant.id}`;
+      const sentForThisAsk = events.some((event) =>
+        event.id === key ||
+        event.id.startsWith(`resume:flex:${session.id}:${candidate?.id ?? 'broaden'}:${participant.id}`) ||
+        event.id.startsWith(`call-complete-fallback:${session.id}:${participant.id}:`));
+      if (sentForThisAsk) continue;
+      // Provider failures remain retryable, but a bad credential or temporary
+      // outage should not create a tight message loop.
+      const lastAttempt = this.recoveryAttempts.get(key) ?? 0;
+      if (Date.now() - lastAttempt < 10_000) continue;
+      this.recoveryAttempts.set(key, Date.now());
+      const sent = await this.safeSend(session, participant, `${question} Reply here, or reply STOP to opt out.`, key);
+      if (sent) this.recoveryAttempts.delete(key);
     }
   }
 

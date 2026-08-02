@@ -5,6 +5,8 @@ import { SessionStore } from './sessions.js';
 export function matchesSlot(constraint: string, slot: string): boolean {
   const normalized = constraint.toLowerCase().replaceAll(' ', '_');
   const day = slot.split('_')[0];
+  const period = slot.split('_')[1];
+  if (normalized.startsWith('every_') && period && normalized.includes(`_${period}`)) return true;
   if (normalized === `${day}_anytime` || normalized === `anytime_${day}`) return true;
   if (/^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)_anytime$/.test(normalized)) return false;
   if (
@@ -30,6 +32,13 @@ export function matchesSlot(constraint: string, slot: string): boolean {
 export function matchesCandidateConstraint(constraint: string, candidate: Candidate): boolean {
   const normalized = constraint.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   if (normalized.startsWith('outside_')) {
+    const allowedWindow = normalized.slice('outside_'.length);
+    // Voice agents often express a hard boundary as, for example,
+    // "outside every evening 6 to 10". That is a time complement, not a
+    // geographic constraint. A matching evening is therefore not vetoed.
+    if (/(?:morning|afternoon|evening|night|weekend|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/.test(allowedWindow)) {
+      return !matchesSlot(allowedWindow, candidate.slot);
+    }
     const allowed = normalized.slice('outside_'.length).split('_').filter((token) => token.length > 2);
     const location = `${candidate.location} ${candidate.theater}`.toLowerCase();
     return allowed.length > 0 && !allowed.every((token) => location.includes(token));
