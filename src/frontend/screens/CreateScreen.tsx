@@ -7,7 +7,7 @@ import Masthead from '../components/Masthead';
 import BadgerMark from '../components/BadgerMark';
 
 const EMPTY_ROW: DraftParticipant = { name: '', phone: '', required: true };
-const MIN_OTHERS = 2;
+const MIN_OTHERS = 1;
 
 export function LaunchOverlay({ count }: { count: number }) {
   return (
@@ -86,7 +86,7 @@ export default function CreateScreen() {
 
     const complete = touched.filter((r) => r.name.trim() && normalizePhone(r.phone));
     if (complete.length < MIN_OTHERS) {
-      found.push(`Badger needs at least ${MIN_OTHERS} people besides you — it coordinates groups, not solo trips.`);
+      found.push('Badger needs at least one other person — it coordinates people, not solo trips.');
     }
     return { problems: found, complete };
   };
