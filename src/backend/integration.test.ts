@@ -89,6 +89,7 @@ const inboundFactory: SpectrumTransportFactory = async () => ({
   async sendText() { return { messageId: 'sent', status: 'sent', service: 'iMessage' }; },
   async *inbound() {
     yield { messageId: 'reply-prefs', from: '+15550000456', body: 'all day', timestamp: new Date().toISOString(), service: 'iMessage' };
+    yield { messageId: 'reply-decline', from: '+15550000456', body: 'I can’t make that', timestamp: new Date().toISOString(), service: 'iMessage' };
     yield { messageId: 'reply-confirm', from: '+15550000456', body: 'YES', timestamp: new Date().toISOString(), service: 'iMessage' };
   },
   async stop() {},
@@ -121,6 +122,8 @@ for (let attempt = 0; attempt < 20 && liveStore.get(draft.id)?.status !== 'COMMI
   await new Promise((resolve) => setTimeout(resolve, 2));
 }
 assert.equal(liveStore.get(draft.id)?.status, 'COMMITTED');
+assert.equal(sharedEvents.list(draft.id).some((event) => event.type === 'proposal.rejected'), true);
+assert.equal(sharedEvents.list(draft.id).some((event) => event.type === 'session.cancelled'), false);
 await live.stop();
 
 const liveEnv = {

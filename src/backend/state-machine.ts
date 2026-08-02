@@ -111,6 +111,36 @@ export class BadgerWorkflow {
     return session;
   }
 
+  rejectCandidate(session: Session, participant: Participant): Session {
+    const canReject =
+      (session.status === 'PROPOSING' && ['PROPOSED', 'CONFIRMED'].includes(participant.status)) ||
+      (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP');
+    const candidate = session.candidates.find((item) => item.id === session.selectedCandidateId);
+    if (!canReject || !candidate || !participant.preferences) {
+      throw new Error('Participant has no active candidate to reject');
+    }
+
+    for (const member of session.participants) {
+      if (['PROPOSED', 'CONFIRMED', 'NEEDS_FOLLOWUP'].includes(member.status)) {
+        member.status = 'RESPONDED';
+        this.sessions.updateParticipant(member);
+      }
+    }
+    session.status = 'COLLECTING';
+    session.selectedCandidateId = undefined;
+    this.sessions.updateSession(session);
+    this.events.append(session.id, 'proposal.rejected', `${participant.name} cannot make that showing`, {
+      participantId: participant.id,
+      candidateId: candidate.id,
+    });
+    return this.recordPreferences(session, participant, {
+      ...participant.preferences,
+      availability: participant.preferences.availability.filter((slot) => slot !== candidate.slot),
+      hardVetoes: [...new Set([...participant.preferences.hardVetoes, candidate.slot])],
+      summary: `${participant.preferences.summary} Cannot make ${candidate.time}.`,
+    });
+  }
+
   decline(session: Session, participant: Participant): Session {
     if (participant.status === 'DECLINED') return session;
     participant.status = 'DECLINED';
@@ -134,7 +164,9 @@ export class BadgerWorkflow {
     this.sessions.updateSession(session);
     this.events.append(session.id, 'matching.started', 'Checking viable showtimes…');
 
-    const viable = session.candidates.filter((candidate) =>
+    const eligible = session.candidates.filter((candidate) =>
+      required.every((participant) => !participant.preferences?.hardVetoes.includes(candidate.slot)));
+    const viable = eligible.filter((candidate) =>
       required.every((participant) => isCandidateFeasible(candidate, participant)),
     );
     if (viable.length) {
@@ -142,7 +174,7 @@ export class BadgerWorkflow {
       return;
     }
 
-    const ranked = session.candidates
+    const ranked = eligible
       .map((candidate) => ({
         candidate,
         feasible: required.filter((participant) => isCandidateFeasible(candidate, participant)).length,

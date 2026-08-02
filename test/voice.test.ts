@@ -275,4 +275,7 @@ test("Spectrum replies are correlated and normalized", async () => {
   assert.equal(events[0]?.privateData.body, "YES");
   assert.equal(events[0]?.privateData.intent, "confirm");
   assert.equal(classifyInboundMessage(" stop "), "opt_out");
+  assert.equal(classifyInboundMessage("I can’t make that"), "decline");
+  assert.equal(classifyInboundMessage("that doesn't work for me"), "decline");
+  assert.equal(classifyInboundMessage("That works for me"), "confirm");
 });

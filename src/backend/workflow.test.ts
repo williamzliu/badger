@@ -10,10 +10,17 @@ store.addParticipant(created,{name:'Alex',phone:'+15550000001'});
 store.addParticipant(created,{name:'Priya',phone:'+15550000002'});
 const session=store.get(created.id)!;
 workflow.start(session);
-for(const p of session.participants) workflow.recordPreferences(session,p,{availability:['friday_after_8'],hardVetoes:[],preferences:['imax'],flexibility:.7,summary:'Friday works'});
+for(const p of session.participants) workflow.recordPreferences(session,p,{availability:['friday_after_8','saturday_afternoon'],hardVetoes:[],preferences:['imax'],flexibility:.7,summary:'Friday or Saturday works'});
 assert.equal(session.status,'PROPOSING');
 assert.ok(session.selectedCandidateId);
 assert.equal(events.list(session.id).at(-1)?.type,'plan.proposed');
+const rejectedCandidateId=session.selectedCandidateId;
+workflow.rejectCandidate(session,session.participants[0]!);
+assert.equal(session.status,'PROPOSING');
+assert.notEqual(session.selectedCandidateId,rejectedCandidateId);
+assert.equal(session.candidates.find((candidate)=>candidate.id===session.selectedCandidateId)?.slot,'saturday_afternoon');
+assert.equal(events.list(session.id).some((event)=>event.type==='session.cancelled'),false);
+assert.equal(events.list(session.id).some((event)=>event.type==='proposal.rejected'),true);
 
 const conflicted=store.create({hostName:'Host',goal:'Conflict demo'});
 store.addParticipant(conflicted,{name:'Flexible',phone:'+15550000003'});

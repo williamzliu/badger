@@ -108,7 +108,6 @@ export class LiveCommunications implements Communications {
   }
 
   async afterPreferences(session: Session, previousStatus: Session['status']): Promise<void> {
-    if (session.status === previousStatus) return;
     if (session.status === 'RESOLVING') {
       const target = session.participants.find((participant) => participant.status === 'NEEDS_FOLLOWUP');
       const candidate = session.candidates.find((item) => item.id === session.selectedCandidateId);
@@ -212,8 +211,22 @@ export class LiveCommunications implements Communications {
     const participant = session?.participants.find((item) => item.id === event.participantId);
     if (!session || !participant) return;
     const intent = event.privateData.intent as InboundMessageIntent | undefined;
-    if (intent === 'opt_out' || intent === 'decline') {
+    if (intent === 'opt_out') {
       this.config.workflow.decline(session, participant);
+      return;
+    }
+    if (intent === 'decline') {
+      const rejectsCandidate =
+        (session.status === 'PROPOSING' && ['PROPOSED', 'CONFIRMED'].includes(participant.status)) ||
+        (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP');
+      if (!rejectsCandidate) {
+        this.config.workflow.decline(session, participant);
+        return;
+      }
+      const previousStatus = session.status;
+      this.config.workflow.rejectCandidate(session, participant);
+      const fresh = this.config.sessions.get(session.id);
+      if (fresh) await this.afterPreferences(fresh, previousStatus);
       return;
     }
     if (intent === 'freeform') {

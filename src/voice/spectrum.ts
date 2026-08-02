@@ -261,12 +261,19 @@ export async function sendBadgerMessage(
 }
 
 export function classifyInboundMessage(body: string): InboundMessageIntent {
-  const normalized = body.trim().toUpperCase();
-  if (["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"].includes(normalized)) {
+  const normalized = body.trim().toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, " ");
+  if (["stop", "stopall", "unsubscribe", "cancel", "end", "quit"].includes(normalized)) {
     return "opt_out";
   }
-  if (["YES", "Y", "CONFIRM", "CONFIRMED"].includes(normalized)) return "confirm";
-  if (["NO", "N", "DECLINE"].includes(normalized)) return "decline";
+  if (
+    ["no", "n", "nope", "decline"].includes(normalized) ||
+    /\b(?:can(?:not|'t)|won't)\s+(?:make|do)\b/.test(normalized) ||
+    /\b(?:not able to make|doesn't work|does not work)\b/.test(normalized)
+  ) return "decline";
+  if (
+    ["yes", "y", "confirm", "confirmed"].includes(normalized) ||
+    /\b(?:i can make (?:it|that)|that works|works for me|sounds good|count me in|i'm in|i'll be there)\b/.test(normalized)
+  ) return "confirm";
   return "freeform";
 }
 
