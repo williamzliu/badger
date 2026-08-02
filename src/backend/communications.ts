@@ -578,7 +578,13 @@ export class LiveCommunications implements Communications {
     if (event.type === 'call.failed') {
       await this.safeSend(session, participant, MESSAGE_COPY.missedCall(), `missed:${session.id}:${participant.id}`);
     }
-    if (event.type === 'preferences.received' && !participant.preferences) {
+    if (event.type === 'preferences.received') {
+      // A flexibility-call target already has preferences on file — the
+      // transcript-recovered answer to the follow-up question must still be
+      // recorded, or the session stays wedged in RESOLVING. Outside that
+      // case, an existing answer wins over a late or duplicate call result.
+      const answersFollowUp = session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP';
+      if (participant.preferences && !answersFollowUp) return;
       const submitted = event.privateData.preferences as ParticipantPreferences | undefined;
       if (!submitted) return;
       // A call can finish after the session has moved on (e.g. an optional
