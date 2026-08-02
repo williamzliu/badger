@@ -188,6 +188,12 @@ input:focus-visible {
   line-height: 1;
 }
 
+.mast-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* ── Motion ───────────────────────────────────────────────────────── */
 @keyframes pulse-dot {
   50% {

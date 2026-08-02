@@ -153,6 +153,20 @@
   z-index: 50;
 }
 
+.overlay-badger {
+  animation: overlay-bounce 1.1s ease-in-out infinite;
+}
+
+@keyframes overlay-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
 .overlay-text {
   font-family: var(--serif);
   font-style: italic;

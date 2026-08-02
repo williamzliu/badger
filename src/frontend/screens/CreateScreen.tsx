@@ -3,13 +3,16 @@ import { useBadger } from '../store';
 import { createDraft, demoDraft, restartSession, sendBadger } from '../actions';
 import type { DraftParticipant } from '../fixtures';
 import Masthead from '../components/Masthead';
+import BadgerMark from '../components/BadgerMark';
 
 const EMPTY_ROW: DraftParticipant = { name: '', phone: '', required: true };
 
 export function LaunchOverlay({ count }: { count: number }) {
   return (
     <div className="overlay">
-      <span className="livedot" />
+      <span className="overlay-badger">
+        <BadgerMark size={64} />
+      </span>
       <div className="overlay-text">Contacting {count} people…</div>
     </div>
   );
