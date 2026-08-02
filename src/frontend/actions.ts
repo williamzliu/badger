@@ -1,6 +1,7 @@
 import { badger, type Mode } from './store';
 import { MockDriver } from './mockDriver';
 import * as api from './api';
+import { normalizePhone } from './phone';
 import {
   BLOCKER_PREFS,
   BLOCKER_RESOLVED_PREFS,
@@ -38,8 +39,13 @@ export function demoDraft(): DraftInput {
 export async function createDraft(input: DraftInput): Promise<void> {
   badger.setError(null);
   // The host is a participant too — Badger calls them like everyone else.
+  // Dedupe by phone (not name): a participant who happens to share the
+  // host's name must not silently drop the host from the group.
+  const hostE164 = input.hostPhone ? normalizePhone(input.hostPhone) : null;
+  const hostAlreadyListed =
+    hostE164 !== null && input.participants.some((p) => normalizePhone(p.phone) === hostE164);
   const participants =
-    input.hostPhone && !input.participants.some((p) => p.name === input.hostName)
+    input.hostPhone && !hostAlreadyListed
       ? [{ name: input.hostName, phone: input.hostPhone, required: true }, ...input.participants]
       : input.participants;
   const full = { ...input, participants };
@@ -55,13 +61,21 @@ export async function createDraft(input: DraftInput): Promise<void> {
 /** Abandon the current draft and return to the create form. */
 export function discardDraft() {
   badger.setError(null);
-  if (mode() === 'mock') driver.clear();
-  else api.clearSession();
+  if (mode() === 'mock') {
+    driver.clear();
+  } else {
+    void api.cancelSession();
+    api.clearSession();
+  }
   badger.reset();
 }
 
 export async function sendBadger(): Promise<void> {
   badger.setError(null);
+  if (!badger.getSnapshot().session) {
+    badger.setError('No session yet — create one (or Load demo scenario) first');
+    return;
+  }
   badger.setLaunching(true);
   window.setTimeout(() => badger.setLaunching(false), 2400);
   try {
@@ -78,6 +92,9 @@ export function restartSession() {
   if (mode() === 'mock') {
     driver.restart();
   } else {
+    // Actually stop the backend session — an abandoned live session would
+    // keep calling and texting real phones.
+    void api.cancelSession();
     api.clearSession();
     badger.reset();
   }
@@ -127,15 +144,26 @@ export async function runPreset(preset: PresetId, participantId?: string): Promi
         await api.confirmParticipant(target.id);
         break;
       case 'skip-to-final': {
-        for (const p of session.participants.filter((x) => !x.preferences)) {
+        // Only required participants gate matching and commitment; the
+        // backend 400s confirms for anyone not PROPOSED.
+        if (session.status === 'RESOLVING') {
+          const blocked = session.participants.find((p) => p.status === 'NEEDS_FOLLOWUP');
+          if (blocked) await api.injectPreferences(blocked.id, BLOCKER_RESOLVED_PREFS);
+        }
+        for (const p of session.participants.filter((x) => x.required && !x.preferences)) {
           await api.injectPreferences(
             p.id,
             isBlocker(session, p) ? BLOCKER_RESOLVED_PREFS : prefsFor(session, p),
           );
         }
-        const refreshed = badger.getSnapshot().session;
+        const refreshed = await api.fetchSession();
         for (const p of (refreshed ?? session).participants) {
-          if (p.status !== 'CONFIRMED') await api.confirmParticipant(p.id);
+          if (!p.required || p.status === 'CONFIRMED') continue;
+          try {
+            await api.confirmParticipant(p.id);
+          } catch {
+            /* already confirmed or committed — keep going */
+          }
         }
         break;
       }

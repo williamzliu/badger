@@ -103,12 +103,42 @@ export async function resume(): Promise<boolean> {
   if (!id) return false;
   try {
     const session = await http<Session>('GET', `/sessions/${id}`);
+    // A finished session from an earlier run should not reopen on the finale
+    // screen — start fresh instead.
+    if (session.status === 'COMMITTED' || session.status === 'CANCELLED') {
+      localStorage.removeItem(SESSION_KEY);
+      return false;
+    }
     badger.applySession(session);
     if (session.status !== 'DRAFT') connectEvents(id);
     return true;
   } catch {
     localStorage.removeItem(SESSION_KEY);
     return false;
+  }
+}
+
+/** Fetch the authoritative session snapshot (also applied to the store). */
+export async function fetchSession(): Promise<Session | null> {
+  const id = storedSessionId();
+  if (!id) return null;
+  try {
+    const session = await http<Session>('GET', `/sessions/${id}`);
+    badger.applySession(session);
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort stop for the live session so no further calls/texts fire. */
+export async function cancelSession(): Promise<void> {
+  const id = storedSessionId();
+  if (!id) return;
+  try {
+    await http('POST', `/sessions/${id}/cancel`, {});
+  } catch {
+    /* already finished, or backend unreachable — clearing locally regardless */
   }
 }
 

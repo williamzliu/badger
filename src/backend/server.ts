@@ -83,6 +83,20 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
     }
   });
 
+  // Operator escape hatch: stop an in-flight session so no further calls or
+  // texts go out (pending call timers re-check status and stand down).
+  app.post('/sessions/:id/cancel', async (request, reply) => {
+    const session = sessions.get((request.params as { id: string }).id);
+    if (!session) return reply.code(404).send({ error: 'Session not found' });
+    if (session.status === 'COMMITTED') return reply.code(400).send({ error: 'Session is already committed' });
+    if (session.status !== 'CANCELLED') {
+      session.status = 'CANCELLED';
+      sessions.updateSession(session);
+      events.append(session.id, 'session.cancelled', 'The host called it off');
+    }
+    return sessions.get(session.id);
+  });
+
   async function receivePreferences(
     body: { sessionId?: string; participantId?: string } & Preferences,
     reply: FastifyReply,
