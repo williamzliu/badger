@@ -27,6 +27,7 @@ type SailPlannerConfig = {
   saveHistory: (sessionId: string, history: ConversationItem[]) => void | Promise<void>;
   model?: string;
   baseUrl?: string;
+  requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 };
 
@@ -108,17 +109,21 @@ export class SailPlanner implements GroupPlanner {
       ...history,
       { role: 'user', content: `Current authoritative coordination state:\n${JSON.stringify(snapshot)}` },
     ];
+    const requestInput: ConversationItem[] = [{
+      role: 'system',
+      content: `You are Badger's long-lived group coordinator. Use all prior state updates, your prior tool calls, and their execution results. Choose exactly one valid next action. The backend state is authoritative: never change the selected candidate or flexibility target, never violate a hard veto, and never reveal one participant's private answers to another. Write concise messages that tell recipients how to respond.`,
+    }, ...input];
     const response = await this.fetchImpl(`${this.baseUrl}/responses`, {
       method: 'POST',
+      signal: AbortSignal.timeout(this.config.requestTimeoutMs ?? 5_000),
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
         'Content-Type': 'application/json',
-        'Idempotency-Key': createHash('sha256').update(JSON.stringify(input)).digest('hex'),
+        'Idempotency-Key': createHash('sha256').update(JSON.stringify(requestInput)).digest('hex'),
       },
       body: JSON.stringify({
         model: this.config.model ?? 'zai-org/GLM-5.2-FP8',
-        instructions: `You are Badger's long-lived group coordinator. Use all prior state updates, your prior tool calls, and their execution results. Choose exactly one valid next action. The backend state is authoritative: never change the selected candidate or flexibility target, never violate a hard veto, and never reveal one participant's private answers to another. Write concise messages that tell recipients how to respond.`,
-        input,
+        input: requestInput,
         tools: [{
           type: 'function',
           name: 'coordinate_group',
@@ -138,7 +143,6 @@ export class SailPlanner implements GroupPlanner {
           },
         }],
         tool_choice: { type: 'function', name: 'coordinate_group' },
-        parallel_tool_calls: false,
         max_output_tokens: 600,
         metadata: { completion_window: 'asap', badger_session_id: session.id },
         store: false,

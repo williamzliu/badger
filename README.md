@@ -31,7 +31,7 @@ Important values:
 - `CARTESIA_FROM_NUMBER_ID` is the Cartesia phone-number **ID**, not its visible `+1…` number.
 - `SPECTRUM_PROJECT_ID` and `SPECTRUM_PROJECT_SECRET` come from Photon project settings.
 - `BADGER_TOOL_SECRET` must match the secret accepted by `/internal/preferences`.
-- `SAIL_API_KEY` is required in live mode. `SAIL_MODEL` defaults to `zai-org/GLM-5.2-FP8` with the low-latency `asap` window.
+- `SAIL_API_KEY` is required in live mode. `SAIL_MODEL` defaults to `zai-org/GLM-5.2-FP8`; `SAIL_TIMEOUT_MS` defaults to 5000 before Badger sends deterministic fallback copy.
 - `PUBLIC_BASE_URL` and the deployed agent’s `BADGER_BACKEND_URL` must be public HTTPS URLs for live callbacks.
 
 For a safe UI-only rehearsal, keep:

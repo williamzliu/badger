@@ -92,6 +92,23 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
     const participant = session.participants.find((item) => item.id === body.participantId);
     if (!participant) return reply.code(404).send({ error: 'Participant not found' });
     if (!validPreferences(body)) return reply.code(400).send({ error: 'Invalid preferences payload' });
+    const submitted = {
+      availability: body.availability,
+      hardVetoes: body.hardVetoes,
+      preferences: body.preferences,
+      flexibility: body.flexibility,
+      summary: body.summary,
+    };
+    if (participant.preferences) {
+      const current = {
+        availability: participant.preferences.availability,
+        hardVetoes: participant.preferences.hardVetoes,
+        preferences: participant.preferences.preferences,
+        flexibility: participant.preferences.flexibility,
+        summary: participant.preferences.summary,
+      };
+      if (JSON.stringify(current) === JSON.stringify(submitted)) return session;
+    }
     try {
       const previousStatus = session.status;
       workflow.recordPreferences(session, participant, body);

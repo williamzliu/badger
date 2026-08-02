@@ -11,6 +11,7 @@ import { EventLog } from './events.js';
 import { type GroupPlanner, type PlannerDecision, SailPlanner } from './sail.js';
 import { SessionStore } from './sessions.js';
 import { BadgerWorkflow } from './state-machine.js';
+import { inferPreferencesFromText } from './text-replies.js';
 
 export interface Communications {
   start(): Promise<void>;
@@ -158,11 +159,11 @@ export class LiveCommunications implements Communications {
     await delay(this.config.callDelayMs ?? 10_000, this.abort.signal);
     const initial = this.config.sessions.get(sessionId);
     if (!initial || this.abort.signal.aborted) return;
-    for (const original of initial.participants) {
+    await Promise.all(initial.participants.map(async (original, index) => {
+      await delay(index * (this.config.callStaggerMs ?? 1_000), this.abort.signal);
       const session = this.config.sessions.get(sessionId);
       const participant = session?.participants.find((item) => item.id === original.id);
-      if (!session || !participant || this.abort.signal.aborted) return;
-      if (participant.status !== 'TEXTED') continue;
+      if (!session || !participant || this.abort.signal.aborted || participant.status !== 'TEXTED') return;
       this.config.workflow.markCalling(session, participant);
       try {
         const metadata = callMetadata(session, participant);
@@ -180,8 +181,7 @@ export class LiveCommunications implements Communications {
           await this.safeSend(fresh, freshParticipant, MESSAGE_COPY.missedCall(), `missed:${session.id}:${participant.id}`);
         }
       }
-      await delay(this.config.callStaggerMs ?? 1_000, this.abort.signal);
-    }
+    }));
   }
 
   private async onCartesiaEvent(event: BadgerEvent): Promise<void> {
@@ -214,6 +214,31 @@ export class LiveCommunications implements Communications {
     const intent = event.privateData.intent as InboundMessageIntent | undefined;
     if (intent === 'opt_out' || intent === 'decline') {
       this.config.workflow.decline(session, participant);
+      return;
+    }
+    if (intent === 'freeform') {
+      const collecting = session.status === 'COLLECTING' && !participant.preferences;
+      const followingUp = session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP';
+      if (!collecting && !followingUp) return;
+      const body = String(event.privateData.body ?? '');
+      try {
+        const preferences = inferPreferencesFromText(session, participant, body);
+        if (!preferences) {
+          await this.safeSend(
+            session,
+            participant,
+            "I couldn't map that to a showtime. Reply with a day and time, like ‘Saturday evening’.",
+            `clarify:${session.id}:${participant.id}:${event.id}`,
+          );
+          return;
+        }
+        const previousStatus = session.status;
+        this.config.workflow.recordPreferences(session, participant, preferences);
+        const fresh = this.config.sessions.get(session.id);
+        if (fresh) await this.afterPreferences(fresh, previousStatus);
+      } catch (error) {
+        this.integrationFailure(session, participant, 'text reply interpretation', error);
+      }
       return;
     }
     if (intent !== 'confirm') return;
@@ -319,6 +344,7 @@ export function createConfiguredCommunications(input: {
     apiKey: requiredEnv('SAIL_API_KEY'),
     model: process.env.SAIL_MODEL,
     baseUrl: process.env.SAIL_BASE_URL,
+    requestTimeoutMs: positiveNumber(process.env.SAIL_TIMEOUT_MS, 5_000),
     loadHistory: (sessionId) => input.sessions.getSailHistory(sessionId),
     saveHistory: (sessionId, history) => input.sessions.saveSailHistory(sessionId, history),
   });
@@ -329,6 +355,7 @@ export function createConfiguredCommunications(input: {
       agentId: requiredEnv('CARTESIA_AGENT_ID'),
       fromNumberId: requiredEnv('CARTESIA_FROM_NUMBER_ID'),
       baseUrl: process.env.CARTESIA_BASE_URL,
+      requestTimeoutMs: positiveNumber(process.env.CARTESIA_REQUEST_TIMEOUT_MS, 10_000),
     }),
     spectrum: new SpectrumMessagingClient({
       projectId: requiredEnv('SPECTRUM_PROJECT_ID'),

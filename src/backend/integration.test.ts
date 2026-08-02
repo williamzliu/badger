@@ -47,6 +47,22 @@ const preferences = await app.inject({
 assert.equal(preferences.statusCode, 200);
 assert.equal(calls.preferences, 1);
 
+const duplicatePreferences = await app.inject({
+  method: 'POST',
+  url: '/internal/preferences',
+  payload: {
+    sessionId: session.id,
+    participantId: participant.id,
+    availability: ['friday_after_8'],
+    hardVetoes: [],
+    preferences: ['imax'],
+    flexibility: 0.5,
+    summary: 'Friday works',
+  },
+});
+assert.equal(duplicatePreferences.statusCode, 200);
+assert.equal(calls.preferences, 1);
+
 const confirmation = await app.inject({ method: 'POST', url: `/sessions/${session.id}/participants/${participant.id}/confirm` });
 assert.equal(confirmation.json().status, 'COMMITTED');
 assert.equal(calls.confirmation, 1);
@@ -69,13 +85,11 @@ const draft = liveStore.create({ hostName: 'Host', goal: 'Movie' });
 liveStore.addParticipant(draft, { name: 'Alex', phone: '+15550000456' });
 const proposing = liveStore.get(draft.id)!;
 liveWorkflow.start(proposing);
-liveWorkflow.recordPreferences(proposing, proposing.participants[0]!, {
-  availability: ['friday_after_8'], hardVetoes: [], preferences: ['imax'], flexibility: 0.5, summary: 'Friday',
-});
 const inboundFactory: SpectrumTransportFactory = async () => ({
   async sendText() { return { messageId: 'sent', status: 'sent', service: 'iMessage' }; },
   async *inbound() {
-    yield { messageId: 'reply', from: '+15550000456', body: 'YES', timestamp: new Date().toISOString(), service: 'iMessage' };
+    yield { messageId: 'reply-prefs', from: '+15550000456', body: 'all day', timestamp: new Date().toISOString(), service: 'iMessage' };
+    yield { messageId: 'reply-confirm', from: '+15550000456', body: 'YES', timestamp: new Date().toISOString(), service: 'iMessage' };
   },
   async stop() {},
 });

@@ -1,5 +1,6 @@
 import type { Participant, ParticipantStatus } from '../../shared/types';
 import { useBadger, type BadgerSnapshot, type FeedItem } from '../store';
+import { restartSession } from '../actions';
 import Masthead from '../components/Masthead';
 
 const STATUS_TEXT: Record<ParticipantStatus, string> = {
@@ -107,6 +108,9 @@ export default function LiveScreen() {
       <div className="live-head">
         <h1 className="live-headline">{story.headline}</h1>
         <div className="live-sub">{story.sub}</div>
+        <button className="btn-line live-reset" type="button" onClick={restartSession}>
+          Start over
+        </button>
       </div>
       <div className="live-grid" style={{ flex: 1 }}>
         <div className="live-left">
