@@ -25,6 +25,8 @@ export interface Preferences {
   preferences: string[];
   flexibility: number;
   summary: string;
+  /** A complete revised group goal requested during the conversation. */
+  planRequest?: string;
 }
 
 export interface Candidate {
@@ -154,5 +156,8 @@ export function parseParticipantPreferences(value: unknown): ParticipantPreferen
     preferences: stringArray(value.preferences, "preferences.preferences"),
     flexibility,
     summary: requireString(value.summary, "preferences.summary"),
+    ...(typeof value.planRequest === 'string' && value.planRequest.trim()
+      ? { planRequest: value.planRequest.trim() }
+      : {}),
   };
 }

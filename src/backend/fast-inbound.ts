@@ -38,8 +38,8 @@ export class OpenAIFastInboundPlanner implements InboundMessagePlanner {
     const model = this.config.model ?? 'gpt-4.1-nano';
     const activeOption = hasActiveOption(session, participant);
     const actions = activeOption
-      ? ['RECORD_PREFERENCES', 'ACCEPT_ACTIVE_OPTION', 'REJECT_ACTIVE_OPTION', 'ASK_FOLLOWUP']
-      : ['RECORD_PREFERENCES', 'ASK_FOLLOWUP'];
+      ? ['RECORD_PREFERENCES', 'ACCEPT_ACTIVE_OPTION', 'REJECT_ACTIVE_OPTION', 'ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN']
+      : ['RECORD_PREFERENCES', 'ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN'];
     const response = await this.fetchImpl(`${this.baseUrl}/responses`, {
       method: 'POST',
       signal: AbortSignal.timeout(this.config.requestTimeoutMs ?? 2_000),
@@ -52,7 +52,7 @@ export class OpenAIFastInboundPlanner implements InboundMessagePlanner {
         ...(model.startsWith('gpt-5') ? { reasoning: { effort: 'none' } } : {}),
         input: [{
           role: 'system',
-          content: 'Interpret one scheduling text. Never invent availability. Choose ASK_FOLLOWUP when meaning is incomplete. A vague negative reply with no alternative means ask what day or time works instead; never repeat the rejected candidate. STOP is handled elsewhere. Always supply the best fallback channel and exact follow-up wording; they are ignored for state-only actions. Use CALL when a short conversation is faster than another text. Keep follow-up wording under 18 words with no pleasantries. Keep the reason group-level and privacy-safe.',
+          content: 'Interpret one message to a conversational group-planning agent. Do not force every message into scheduling. RESPOND_WITH_CONTEXT answers a question about the activity, researched options, current proposal, tradeoffs, or Badger itself without changing state. Use only the supplied context, admit when a live detail is unknown, and never expose another participant\'s private constraints. CHANGE_PLAN applies to a material change of activity, venue, city, or overall goal; updatedGoal must be a complete replacement goal preserving unchanged timing/location context. A different day or time is a REJECT_ACTIVE_OPTION counterproposal, not CHANGE_PLAN. ASK_FOLLOWUP is only for genuinely missing information and must not repeat an option the sender just tried to change. STOP is handled elsewhere. Keep replies natural and under 45 words. Never invent availability. Keep the reason group-level and privacy-safe.',
         }, {
           role: 'user',
           content: JSON.stringify({
@@ -81,7 +81,7 @@ export class OpenAIFastInboundPlanner implements InboundMessagePlanner {
             additionalProperties: false,
             required: [
               'action', 'channel', 'message', 'reason', 'availability', 'hardVetoes',
-              'softPreferences', 'flexibility', 'summary',
+              'softPreferences', 'flexibility', 'summary', 'updatedGoal',
             ],
             properties: {
               action: { type: 'string', enum: actions },
@@ -93,12 +93,13 @@ export class OpenAIFastInboundPlanner implements InboundMessagePlanner {
               softPreferences: { type: 'array', items: { type: 'string' } },
               flexibility: { type: 'number', minimum: 0, maximum: 1 },
               summary: { type: 'string' },
+              updatedGoal: { type: 'string' },
             },
           },
         }],
         tool_choice: { type: 'function', name: 'interpret_inbound_message' },
         max_output_tokens: 220,
-        prompt_cache_key: 'badger:fast-inbound:v1',
+        prompt_cache_key: 'badger:fast-inbound:v2',
       }),
     });
     const raw = await response.text();
@@ -111,7 +112,9 @@ export class OpenAIFastInboundPlanner implements InboundMessagePlanner {
     );
     if (typeof call?.arguments !== 'string') throw new Error('Fast inbound planner omitted its decision');
     const decision = JSON.parse(call.arguments) as Record<string, unknown>;
-    if (decision.action !== 'ASK_FOLLOWUP') decision.channel = 'NONE';
+    if (!['ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN'].includes(String(decision.action))) {
+      decision.channel = 'NONE';
+    }
     return parseInboundDecision(decision);
   }
 }

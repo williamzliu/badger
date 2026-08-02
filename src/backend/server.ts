@@ -118,6 +118,7 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
     if (!['COLLECTING', 'RESOLVING'].includes(session.status)) return session;
 
     const unavailableEverywhere =
+      !validText(body.planRequest) &&
       body.availability.length === 0 &&
       (body.hardVetoes.includes('all_times') || body.preferences.includes('no_call'));
     if (unavailableEverywhere) {
@@ -130,6 +131,7 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
       preferences: body.preferences,
       flexibility: body.flexibility,
       summary: body.summary,
+      planRequest: body.planRequest,
     };
     if (participant.preferences) {
       const current = {
@@ -138,6 +140,7 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
         preferences: participant.preferences.preferences,
         flexibility: participant.preferences.flexibility,
         summary: participant.preferences.summary,
+        planRequest: participant.preferences.planRequest,
       };
       if (JSON.stringify(current) === JSON.stringify(submitted)) return session;
     }

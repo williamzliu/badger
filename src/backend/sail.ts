@@ -19,11 +19,18 @@ export type PlannerOutcome = {
 };
 
 export type InboundMessageDecision = {
-  action: 'RECORD_PREFERENCES' | 'ACCEPT_ACTIVE_OPTION' | 'REJECT_ACTIVE_OPTION' | 'ASK_FOLLOWUP';
+  action:
+    | 'RECORD_PREFERENCES'
+    | 'ACCEPT_ACTIVE_OPTION'
+    | 'REJECT_ACTIVE_OPTION'
+    | 'ASK_FOLLOWUP'
+    | 'RESPOND_WITH_CONTEXT'
+    | 'CHANGE_PLAN';
   channel: 'NONE' | 'SMS' | 'CALL';
   message: string;
   reason: string;
   preferences: Preferences;
+  updatedGoal?: string;
 };
 
 export type OutreachStep = {
@@ -47,7 +54,7 @@ export type SailCompletionWindow = 'asap' | 'priority' | 'standard' | 'flex';
 
 export interface GroupPlanner {
   prewarm?(session: Session): Promise<void>;
-  prepare?(session: Session): Promise<CoordinationPreparation>;
+  prepare?(session: Session, options?: { replanning?: boolean }): Promise<CoordinationPreparation>;
   observeMessage?(session: Session, participant: Participant, body: string): Promise<void>;
   observeInboundDecision?(sessionId: string, participant: Participant, decision: InboundMessageDecision): Promise<void>;
   interpretMessage?(session: Session, participant: Participant, body: string): Promise<InboundMessageDecision>;
@@ -110,7 +117,10 @@ function stringList(value: unknown, field: string): string[] {
 export function parseInboundDecision(value: unknown): InboundMessageDecision {
   if (!value || typeof value !== 'object') throw new Error('Sail returned no inbound-message decision');
   const raw = value as Record<string, unknown>;
-  if (!['RECORD_PREFERENCES', 'ACCEPT_ACTIVE_OPTION', 'REJECT_ACTIVE_OPTION', 'ASK_FOLLOWUP'].includes(String(raw.action))) {
+  if (![
+    'RECORD_PREFERENCES', 'ACCEPT_ACTIVE_OPTION', 'REJECT_ACTIVE_OPTION',
+    'ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN',
+  ].includes(String(raw.action))) {
     throw new Error('Sail returned an invalid inbound-message action');
   }
   if (!['NONE', 'SMS', 'CALL'].includes(String(raw.channel))) {
@@ -133,12 +143,20 @@ export function parseInboundDecision(value: unknown): InboundMessageDecision {
       flexibility,
       summary: typeof raw.summary === 'string' ? raw.summary.trim() : '',
     },
+    updatedGoal: typeof raw.updatedGoal === 'string' ? raw.updatedGoal.trim() : '',
   };
-  if (decision.action === 'ASK_FOLLOWUP' && (decision.channel === 'NONE' || !decision.message)) {
-    throw new Error('Sail follow-up must choose SMS or CALL and provide a message');
+  if (['ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN'].includes(decision.action) &&
+    (decision.channel === 'NONE' || !decision.message)) {
+    throw new Error('Sail conversational action must choose a channel and provide a message');
   }
-  if (decision.action !== 'ASK_FOLLOWUP' && decision.channel !== 'NONE') {
+  if (!['ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN'].includes(decision.action) && decision.channel !== 'NONE') {
     throw new Error('Sail chose outreach for an action that should update state');
+  }
+  if (decision.action === 'RESPOND_WITH_CONTEXT' && decision.channel !== 'SMS') {
+    throw new Error('Context replies must use SMS');
+  }
+  if (decision.action === 'CHANGE_PLAN' && (decision.channel !== 'SMS' || !decision.updatedGoal)) {
+    throw new Error('Plan changes require an SMS acknowledgement and a complete updated goal');
   }
   if (decision.action === 'RECORD_PREFERENCES' && !decision.preferences.summary) {
     throw new Error('Sail omitted the preference summary');
@@ -293,6 +311,7 @@ function researchFallbackPreparation(
   session: Session,
   researched: ResearchedCandidate[],
   detail: string,
+  replanning = false,
 ): CoordinationPreparation {
   return {
     candidates: researched.map(({ sourceUrl: _sourceUrl, evidence: _evidence, ...candidate }) => candidate as Candidate),
@@ -303,11 +322,15 @@ function researchFallbackPreparation(
       delaySeconds: 0,
       callAfterSeconds: 0,
       message: `Gather broad availability for ${session.goal}.`,
-      reason: 'Calls are already underway; retain the call-first execution path.',
+      reason: replanning
+        ? 'Preserve the existing conversation; no duplicate call is needed.'
+        : 'Calls are already underway; retain the call-first execution path.',
     })),
     insights: [
       `Evidence · ${researched.length} sourced options across ${new Set(researched.map((candidate) => candidate.slot)).size} time windows are available.`,
-      'Plan · Calls are already underway while Badger matches replies against the sourced options.',
+      replanning
+        ? 'Plan · Preserve collected replies while matching them against the revised options.'
+        : 'Plan · Calls are already underway while Badger matches replies against the sourced options.',
     ],
     reason: `Authoritative research retained after the advisory launch review was unavailable: ${detail}`,
   };
@@ -338,14 +361,14 @@ export class SailPlanner implements GroupPlanner {
     await this.config.emitProgress?.(session.id, 'Live research cached for launch');
   }
 
-  async prepare(session: Session): Promise<CoordinationPreparation> {
+  async prepare(session: Session, options: { replanning?: boolean } = {}): Promise<CoordinationPreparation> {
     if (!this.config.researcher) throw new Error('Sail research tool is not configured');
     const history = closeDanglingCalls(await this.config.loadHistory(session.id));
     const input: ConversationItem[] = [
       ...history,
       {
         role: 'user',
-        content: `Start coordination for this authoritative session:\n${JSON.stringify(sessionSnapshot(session, false))}`,
+        content: `${options.replanning ? 'Revise' : 'Start'} coordination for this authoritative session:\n${JSON.stringify(sessionSnapshot(session, false))}`,
       },
     ];
     const locationHint = this.config.locationHint ?? 'San Francisco Bay Area';
@@ -362,7 +385,7 @@ export class SailPlanner implements GroupPlanner {
     );
     const system: ConversationItem = {
       role: 'system',
-      content: `You are Badger's long-lived autonomous group coordinator. The backend launches all initial calls immediately, in parallel with this research turn, so those calls may already be ringing or underway. Evaluate the evidence, rank the strongest sourced options, and review one call-first outreach step for every participant. Do not narrate future call order or claim Badger "will call" someone; the UI must describe the actual live state. Do not propose or commit before hearing each participant's constraints. Failed or unanswered calls automatically fall back to SMS. Return two to four punchy public insights formatted like "Evidence · …", "Tradeoff · …", and "Plan · …". The Plan insight must say calls are already underway while Sail prepares the negotiation strategy. All insight/reason fields are displayed publicly: stay group-level and never include a participant's private answer, constraint, veto, or flexibility score.`,
+      content: `You are Badger's long-lived autonomous group coordinator. ${options.replanning ? 'Participants are not being called again. The group changed the goal mid-conversation; research and rank replacement options that respect the availability already collected.' : 'The backend launches all initial calls immediately, in parallel with this research turn, so those calls may already be ringing or underway.'} Evaluate the evidence, rank the strongest sourced options, and review one call-first outreach step for every participant. Do not narrate future call order or claim Badger "will call" someone; the UI must describe the actual live state. Do not propose or commit before hearing each participant's constraints. Failed or unanswered calls automatically fall back to SMS. Return two to four punchy public insights formatted like "Evidence · …", "Tradeoff · …", and "Plan · …". The Plan insight must describe the actual current execution state. All insight/reason fields are displayed publicly: stay group-level and never include a participant's private answer, constraint, veto, or flexibility score.`,
     };
     const launchInput: ConversationItem[] = [...input, {
       role: 'user',
@@ -433,7 +456,9 @@ export class SailPlanner implements GroupPlanner {
       }
       await this.config.emitReasoning?.(
         session.id,
-        'Plan · Calls are already underway while Sail prepares the option and conflict strategy.',
+        options.replanning
+          ? 'Plan · Badger is preserving the replies already collected while researching the revised plan.'
+          : 'Plan · Calls are already underway while Sail prepares the option and conflict strategy.',
       );
       await this.config.saveHistory(session.id, [...launchInput, ...launchOutput, {
         type: 'function_call_output',
@@ -443,7 +468,7 @@ export class SailPlanner implements GroupPlanner {
       return preparation;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      const fallback = researchFallbackPreparation(session, researched, detail);
+      const fallback = researchFallbackPreparation(session, researched, detail, options.replanning);
       for (const insight of fallback.insights) await this.config.emitReasoning?.(session.id, insight);
       const launchCall = launchOutput.find((item) => item.type === 'function_call' && typeof item.call_id === 'string');
       await this.config.saveHistory(session.id, [
@@ -490,6 +515,7 @@ export class SailPlanner implements GroupPlanner {
         channel: decision.channel,
         message: decision.message,
         preferences: decision.preferences,
+        updatedGoal: decision.updatedGoal,
       })}`,
     }]);
   }
@@ -506,8 +532,8 @@ export class SailPlanner implements GroupPlanner {
         (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP')
       );
     const allowedActions: InboundMessageDecision['action'][] = hasActiveOption
-      ? ['RECORD_PREFERENCES', 'ACCEPT_ACTIVE_OPTION', 'REJECT_ACTIVE_OPTION', 'ASK_FOLLOWUP']
-      : ['RECORD_PREFERENCES', 'ASK_FOLLOWUP'];
+      ? ['RECORD_PREFERENCES', 'ACCEPT_ACTIVE_OPTION', 'REJECT_ACTIVE_OPTION', 'ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN']
+      : ['RECORD_PREFERENCES', 'ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN'];
     const turn: ConversationItem = {
       role: 'user',
       content: `A participant sent a text message. Decide the next coordination action using the full history and current authoritative state.\nActive option for this participant: ${hasActiveOption ? 'yes' : 'no'}\nParticipant: ${JSON.stringify({ id: participant.id, name: participant.name, status: participant.status, preferences: participant.preferences })}\nMessage: ${JSON.stringify(body)}\nSession: ${JSON.stringify(sessionSnapshot(session))}`,
@@ -515,7 +541,7 @@ export class SailPlanner implements GroupPlanner {
     const input: ConversationItem[] = [...history, turn];
     const system: ConversationItem = {
       role: 'system',
-      content: `You are Badger's long-lived group coordinator interpreting one inbound text. STOP/opt-out is handled before you are called. Understand natural language in context; do not require rigid day/time syntax. Choose exactly one action. RECORD_PREFERENCES stores a complete scheduling answer during collection. ACCEPT_ACTIVE_OPTION or REJECT_ACTIVE_OPTION applies only when this participant is responding to the currently selected proposal or flexibility request. ASK_FOLLOWUP asks the smallest useful question by SMS or calls the participant when conversation would be faster. For ASK_FOLLOWUP, write the exact concise text or spoken question. For other actions channel must be NONE and message may be empty. The preference fields must reflect only what the participant actually said plus their existing saved preferences; never invent availability. The reason is shown publicly, so keep it group-level and do not reveal private constraints or quote the message.`,
+      content: `You are Badger's long-lived group coordinator interpreting one inbound text. STOP/opt-out is handled before you are called. Be conversational, not a scheduling form. Choose exactly one action. RESPOND_WITH_CONTEXT answers questions about the goal, researched options, current proposal, tradeoffs, or what Badger is doing without changing state; use only supplied evidence and never reveal another participant's private answer. CHANGE_PLAN applies when someone materially changes the activity, venue, city, or overall goal; updatedGoal must be a complete replacement goal that preserves unchanged timing/location context. A different day or time is a counterproposal, not CHANGE_PLAN. RECORD_PREFERENCES stores scheduling input. ACCEPT_ACTIVE_OPTION or REJECT_ACTIVE_OPTION applies to the selected option. ASK_FOLLOWUP asks only when a necessary detail is genuinely missing. For conversational actions, write the exact concise response. The preference fields must reflect only what the participant actually said plus saved preferences. The reason is public, so keep it group-level and private-safe.`,
     };
     const output = await this.requestTool(
       session,
@@ -530,7 +556,7 @@ export class SailPlanner implements GroupPlanner {
           additionalProperties: false,
           required: [
             'action', 'channel', 'message', 'reason', 'availability', 'hardVetoes',
-            'softPreferences', 'flexibility', 'summary',
+            'softPreferences', 'flexibility', 'summary', 'updatedGoal',
           ],
           properties: {
             action: {
@@ -545,6 +571,7 @@ export class SailPlanner implements GroupPlanner {
             softPreferences: { type: 'array', items: { type: 'string' } },
             flexibility: { type: 'number' },
             summary: { type: 'string' },
+            updatedGoal: { type: 'string' },
           },
         },
       },
@@ -559,8 +586,12 @@ export class SailPlanner implements GroupPlanner {
       ? 'Sail incorporated a new availability update.'
       : decision.action === 'ACCEPT_ACTIVE_OPTION'
         ? 'Sail recognized agreement with the active option.'
-        : decision.action === 'REJECT_ACTIVE_OPTION'
+      : decision.action === 'REJECT_ACTIVE_OPTION'
           ? 'Sail reopened coordination around the active option.'
+          : decision.action === 'RESPOND_WITH_CONTEXT'
+            ? 'Sail answered a participant question without changing the plan.'
+            : decision.action === 'CHANGE_PLAN'
+              ? 'Sail recognized a material change to the group plan.'
           : `Sail chose a ${decision.channel === 'CALL' ? 'callback' : 'text follow-up'} before changing the plan.`;
     await this.config.emitReasoning?.(session.id, `Decision · ${publicDecision}`);
     // Another participant may have completed a Sail turn while this request

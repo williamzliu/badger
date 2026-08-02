@@ -211,12 +211,24 @@ export function instantInboundDecision(
     };
   }
   if (isActiveParticipant && activeCandidate && inferred) {
+    const includesActiveWindow = inferred.availability.some((slot) => matchesSlot(slot, activeCandidate.slot)) &&
+      !inferred.hardVetoes.some((slot) => matchesSlot(slot, activeCandidate.slot));
+    if (includesActiveWindow) {
+      return {
+        action: 'ASK_FOLLOWUP',
+        channel: 'SMS',
+        message: `I can work with that. Keep ${displayCandidateTime(activeCandidate.time)} at ${activeCandidate.theater}, or should I look for another time?`,
+        reason: 'The participant supplied a broad compatible window; Badger narrowed it to the current option.',
+        preferences: inferred,
+      };
+    }
+    const counterproposal = inferCounterproposalFromText(session, participant, body) ?? inferred;
     return {
-      action: 'ASK_FOLLOWUP',
-      channel: 'SMS',
-      message: `To confirm: does ${displayCandidateTime(activeCandidate.time)} at ${activeCandidate.theater} work?`,
-      reason: 'The reply names a broad window but does not confirm the exact active option.',
-      preferences: inferred,
+      action: 'REJECT_ACTIVE_OPTION',
+      channel: 'NONE',
+      message: '',
+      reason: 'The participant offered a different workable window, so Badger reopened matching.',
+      preferences: counterproposal,
     };
   }
   const canRecordExplicitWindow = Boolean(inferred) && (
@@ -239,6 +251,7 @@ export class LiveCommunications implements Communications {
   private readonly preparing = new Set<string>();
   private readonly reviewQueued = new Set<string>();
   private readonly reviewing = new Set<string>();
+  private readonly planChanging = new Set<string>();
   private readonly activeCalls = new Map<string, number>();
   private readonly recoveryAttempts = new Map<string, number>();
   private readonly webhook: CartesiaWebhookProcessor;
@@ -318,6 +331,15 @@ export class LiveCommunications implements Communications {
   }
 
   async afterPreferences(session: Session, previousStatus: Session['status']): Promise<void> {
+    const planRequester = session.participants.find((participant) => participant.preferences?.planRequest);
+    if (planRequester?.preferences?.planRequest) {
+      this.background(this.applyPlanChange(
+        session.id,
+        planRequester.id,
+        planRequester.preferences.planRequest,
+      ));
+      return;
+    }
     if (session.status === 'RESOLVING') {
       const provisionalTarget = session.participants.find((participant) => participant.status === 'NEEDS_FOLLOWUP');
       const provisionalCandidate = session.candidates.find((item) => item.id === session.selectedCandidateId);
@@ -820,6 +842,26 @@ export class LiveCommunications implements Communications {
       reason: decision.reason,
     });
     const previousStatus = session.status;
+    if (decision.action === 'RESPOND_WITH_CONTEXT') {
+      await this.safeSend(
+        session,
+        participant,
+        decision.message,
+        `context-reply:${session.id}:${participant.id}:${inboundEventId}`,
+      );
+      return;
+    }
+    if (decision.action === 'CHANGE_PLAN') {
+      if (!decision.updatedGoal) throw new Error('Sail omitted the revised goal');
+      await this.applyPlanChange(
+        session.id,
+        participant.id,
+        decision.updatedGoal,
+        decision.message,
+        inboundEventId,
+      );
+      return;
+    }
     if (decision.action === 'RECORD_PREFERENCES') {
       if (!['COLLECTING', 'RESOLVING'].includes(session.status)) {
         throw new Error(`Cannot record text preferences while session is ${session.status}`);
@@ -876,6 +918,60 @@ export class LiveCommunications implements Communications {
       return;
     }
     throw new Error('Sail follow-up did not choose SMS or CALL');
+  }
+
+  private async applyPlanChange(
+    sessionId: string,
+    participantId: string,
+    revisedGoal: string,
+    acknowledgement?: string,
+    inboundEventId?: string,
+  ): Promise<void> {
+    if (this.planChanging.has(sessionId)) return;
+    this.planChanging.add(sessionId);
+    try {
+      let session = this.config.sessions.get(sessionId);
+      let participant = session?.participants.find((item) => item.id === participantId);
+      if (!session || !participant || ['COMMITTED', 'CANCELLED'].includes(session.status)) return;
+      if (acknowledgement) {
+        await this.safeSend(
+          session,
+          participant,
+          acknowledgement,
+          `plan-change-ack:${session.id}:${participant.id}:${inboundEventId ?? revisedGoal}`,
+        );
+      }
+      if (participant.preferences?.planRequest) {
+        const { planRequest: _planRequest, ...preferences } = participant.preferences;
+        participant.preferences = preferences;
+        this.config.sessions.updateParticipant(participant);
+      }
+      session = this.config.workflow.changeGoal(session, revisedGoal, participant);
+      this.config.events.append(session.id, 'research.started', 'Researching the revised plan…');
+      if (this.config.planner.prepare) {
+        try {
+          const preparation = await this.config.planner.prepare(session, { replanning: true });
+          this.config.sessions.replaceCandidates(session.id, preparation.candidates);
+          this.config.events.append(session.id, 'research.completed', `Found ${preparation.candidates.length} sourced options for the revised plan`, {
+            reason: preparation.reason,
+            sources: preparation.research.map((candidate) => ({
+              candidateId: candidate.id,
+              sourceUrl: candidate.sourceUrl,
+              evidence: candidate.evidence,
+            })),
+          });
+        } catch (error) {
+          this.integrationFailure(session, participant, 'revised plan research', error);
+        }
+      }
+      const fresh = this.config.sessions.get(session.id);
+      if (!fresh || fresh.status !== 'COLLECTING') return;
+      this.config.workflow.reevaluate(fresh);
+      const evaluated = this.config.sessions.get(session.id);
+      if (evaluated) await this.afterPreferences(evaluated, 'COLLECTING');
+    } finally {
+      this.planChanging.delete(sessionId);
+    }
   }
 
   private send(participant: Participant, body: string, idempotencyKey: string) {

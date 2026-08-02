@@ -31,7 +31,9 @@ assert.equal(requestBody.model, 'gpt-4.1-nano');
 assert.equal(requestBody.reasoning, undefined);
 assert.equal(requestBody.background, undefined);
 const tools = requestBody.tools as Array<{ parameters?: { properties?: { action?: { enum?: string[] } } } }>;
-assert.deepEqual(tools[0]?.parameters?.properties?.action?.enum, ['RECORD_PREFERENCES', 'ASK_FOLLOWUP']);
+assert.deepEqual(tools[0]?.parameters?.properties?.action?.enum, [
+  'RECORD_PREFERENCES', 'ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN',
+]);
 assert.equal(decision.action, 'ASK_FOLLOWUP');
 assert.equal(decision.channel, 'CALL');
 

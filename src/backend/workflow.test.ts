@@ -107,4 +107,18 @@ assert.equal(laterSession.status,'PROPOSING');
 workflow.confirm(laterSession,eric);
 assert.equal(laterSession.status,'COMMITTED');
 assert.equal(laterSession.selectedCandidateId,'balboa-7');
+
+const changedDraft=store.create({hostName:'Host',goal:'See a movie this weekend'});
+store.addParticipant(changedDraft,{name:'Alex',phone:'+15550000009'});
+const changedSession=store.get(changedDraft.id)!;
+workflow.start(changedSession);
+workflow.recordPreferences(changedSession,changedSession.participants[0]!,{
+  availability:['saturday_evening'],hardVetoes:[],preferences:[],flexibility:.8,
+  summary:'Saturday works',planRequest:'go to an escape room this weekend',
+});
+assert.equal(changedSession.status,'COLLECTING');
+assert.equal(changedSession.selectedCandidateId,undefined);
+const persistedChange=workflow.changeGoal(changedSession,'go to an escape room this weekend',changedSession.participants[0]);
+assert.equal(persistedChange.goal,'go to an escape room this weekend');
+assert.equal(persistedChange.candidates.every((candidate)=>candidate.theater==='an escape room'),true);
 console.info('workflow test passed');

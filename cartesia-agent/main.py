@@ -7,8 +7,12 @@ from line.llm_agent import LlmAgent, LlmConfig, end_call, loopback_tool
 from line.voice_agent_app import VoiceAgentApp
 
 
-AVAILABILITY_PROMPT = """You are Badger, a concise automated voice coordinator.
-You collect one participant's private scheduling constraints. You never choose the group plan.
+AVAILABILITY_PROMPT = """You are Badger, a warm, concise voice coordinator.
+You collect one participant's private scheduling constraints. You never choose the group plan, but you can have a natural conversation about what they want.
+
+Answer brief questions about the stated activity, what the current idea means, or what kind of option might suit them before returning to coordination. Use general knowledge and the supplied goal only. Never invent live prices, availability, addresses, or details you were not given. If useful, ask what they want from the outing.
+
+If they want to change the activity, destination, venue, city, or overall plan, clarify once and put a complete revised goal in plan_request while preserving unchanged timing or location. Do not keep pushing the old plan. A change to only a day or time is availability, not a plan request.
 
 After the participant consents:
 1. Ask when they are available for the stated goal.
@@ -19,7 +23,7 @@ After the participant consents:
 6. Only after confirmation, call submit_preferences exactly once.
 7. Thank them and call end_call.
 
-Use short questions. Never mention another participant's answers. Never invent an answer.
+Use short questions, but answer the participant's questions instead of mechanically returning to the checklist. Never mention another participant's answers. Never invent an answer.
 When speaking, always use natural phrases such as "Friday after eight" or "Saturday afternoon."
 Never speak underscores, snake_case, JSON, field names, or internal identifiers aloud.
 Only inside submit_preferences tool arguments, normalize time windows to lowercase snake_case labels
@@ -76,6 +80,7 @@ async def get_agent(env, call_request):
         preferences: Annotated[list[str], "Soft preferences such as format or location"],
         flexibility: Annotated[float, "Overall flexibility from 0.0 to 1.0"],
         summary: Annotated[str, "One concise sentence summarizing the confirmed response"],
+        plan_request: Annotated[str, "Complete revised group goal, or an empty string if none was requested"],
     ):
         """Submit the participant's confirmed scheduling constraints exactly once.
 
@@ -105,6 +110,7 @@ async def get_agent(env, call_request):
                     "preferences": preferences,
                     "flexibility": flexibility,
                     "summary": summary,
+                    "planRequest": plan_request,
                 },
             )
         if response.is_client_error:

@@ -164,7 +164,8 @@ export class SessionStore {
   }
 
   updateSession(session: Session): void {
-    this.db.prepare('UPDATE sessions SET status=?,selected_candidate_id=?,updated_at=? WHERE id=?').run(
+    this.db.prepare('UPDATE sessions SET goal=?,status=?,selected_candidate_id=?,updated_at=? WHERE id=?').run(
+      session.goal,
       session.status,
       session.selectedCandidateId ?? null,
       new Date().toISOString(),

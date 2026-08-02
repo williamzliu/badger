@@ -1,4 +1,5 @@
 import { type Candidate, type Participant, type Preferences, type Session } from '../shared/types.js';
+import { candidatesForGoal } from '../shared/candidates.js';
 import { EventLog } from './events.js';
 import { SessionStore } from './sessions.js';
 
@@ -112,7 +113,40 @@ export class BadgerWorkflow {
       participantId: participant.id,
       preferences,
     });
+    // Communications applies material plan changes, refreshes research, and
+    // then explicitly resumes matching. Do not propose against stale options.
+    if (preferences.planRequest) return session;
     this.evaluate(session, priorAsk);
+    return session;
+  }
+
+  changeGoal(session: Session, revisedGoal: string, participant?: Participant): Session {
+    if (['COMMITTED', 'CANCELLED'].includes(session.status)) {
+      throw new Error(`The plan cannot change while session is ${session.status}`);
+    }
+    const goal = revisedGoal.trim();
+    if (!goal) throw new Error('A revised goal is required');
+    session.goal = goal;
+    session.selectedCandidateId = undefined;
+    session.status = 'COLLECTING';
+    for (const member of session.participants) {
+      if (member.status !== 'DECLINED') {
+        member.status = member.preferences ? 'RESPONDED' : 'TEXTED';
+        this.sessions.updateParticipant(member);
+      }
+    }
+    this.sessions.updateSession(session);
+    this.sessions.replaceCandidates(session.id, candidatesForGoal(goal));
+    this.events.append(session.id, 'plan.changed', `Badger is replanning around ${goal}`, {
+      ...(participant ? { participantId: participant.id } : {}),
+      goal,
+    });
+    return this.sessions.get(session.id)!;
+  }
+
+  reevaluate(session: Session): Session {
+    if (session.status !== 'COLLECTING') throw new Error('Session is not ready to rematch');
+    this.evaluate(session);
     return session;
   }
 
