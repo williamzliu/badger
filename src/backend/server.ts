@@ -106,6 +106,17 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
     const participant = session.participants.find((item) => item.id === body.participantId);
     if (!participant) return reply.code(404).send({ error: 'Participant not found' });
     if (!validPreferences(body)) return reply.code(400).send({ error: 'Invalid preferences payload' });
+    // Voice calls can finish after SMS has already advanced or cancelled the
+    // session. A late tool result is a successful no-op, not a retryable 400.
+    if (!['COLLECTING', 'RESOLVING'].includes(session.status)) return session;
+
+    const unavailableEverywhere =
+      body.availability.length === 0 &&
+      (body.hardVetoes.includes('all_times') || body.preferences.includes('no_call'));
+    if (unavailableEverywhere) {
+      workflow.decline(session, participant);
+      return sessions.get(session.id)!;
+    }
     const submitted = {
       availability: body.availability,
       hardVetoes: body.hardVetoes,

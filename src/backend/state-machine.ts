@@ -2,12 +2,20 @@ import { type Candidate, type Participant, type Preferences, type Session } from
 import { EventLog } from './events.js';
 import { SessionStore } from './sessions.js';
 
+function matchesSlot(constraint: string, slot: string): boolean {
+  const normalized = constraint.toLowerCase().replaceAll(' ', '_');
+  if (['all_day', 'any_time', 'anytime', 'all_times'].includes(normalized)) return true;
+  if (normalized === slot) return true;
+  const day = slot.split('_')[0];
+  return normalized === day || normalized === `${day}_all_day`;
+}
+
 function isCandidateFeasible(candidate: Candidate, participant: Participant): boolean {
   const preferences = participant.preferences;
   return Boolean(
     preferences &&
-    preferences.availability.includes(candidate.slot) &&
-    !preferences.hardVetoes.includes(candidate.slot),
+    preferences.availability.some((window) => matchesSlot(window, candidate.slot)) &&
+    !preferences.hardVetoes.some((window) => matchesSlot(window, candidate.slot)),
   );
 }
 
@@ -165,10 +173,12 @@ export class BadgerWorkflow {
 
     session.status = 'MATCHING';
     this.sessions.updateSession(session);
-    this.events.append(session.id, 'matching.started', 'Checking viable showtimes…');
+    this.events.append(session.id, 'matching.started', 'Checking viable options…');
 
     const eligible = session.candidates.filter((candidate) =>
-      required.every((participant) => !participant.preferences?.hardVetoes.includes(candidate.slot)));
+      required.every((participant) => !participant.preferences?.hardVetoes.some(
+        (window) => matchesSlot(window, candidate.slot),
+      )));
     const viable = eligible.filter((candidate) =>
       required.every((participant) => isCandidateFeasible(candidate, participant)),
     );

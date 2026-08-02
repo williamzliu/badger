@@ -17,7 +17,9 @@ export default function CommitScreen() {
       </h1>
       {plan && (
         <div className="commit-plan">
-          {plan.time} · {plan.theater} · {plan.format}
+          {[plan.time, plan.theater, plan.format !== 'Activity' ? plan.format : null]
+            .filter(Boolean)
+            .join(' · ')}
         </div>
       )}
       <div className="commit-sub smallcaps">Confirmation texts are on their way</div>

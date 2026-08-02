@@ -65,7 +65,7 @@ function narrative(snap: BadgerSnapshot): { headline: string; sub: string } {
       return { headline: `Badger is reaching ${n} people.`, sub: 'Texts first. Calls follow.' };
     case 'MATCHING':
       return {
-        headline: 'Cross-checking every showtime.',
+        headline: 'Cross-checking every option.',
         sub: 'Hard constraints are non-negotiable.',
       };
     default:

@@ -21,7 +21,7 @@ If they consent, do exactly this:
 5. Briefly confirm availability, hard vetoes, preferences, and flexibility.
 6. After confirmation, call submit_preferences exactly once, then thank them and end the call.
 
-Use short questions. Never mention another participant's private answers. Never invent an answer. Normalize time windows to lowercase snake_case labels such as friday_after_8 or saturday_afternoon. Flexibility is a number from 0 (not flexible) to 1 (very flexible).`;
+Use short questions. Never mention another participant's private answers. Never invent an answer. When speaking, use natural phrases such as "Friday after eight" or "Saturday afternoon." Never speak underscores, snake_case, JSON, field names, or internal identifiers aloud. Only inside submit_preferences tool arguments, normalize time windows to lowercase snake_case labels such as friday_after_8 or saturday_afternoon. Flexibility is a number from 0 (not flexible) to 1 (very flexible).`;
 
 export const SUBMIT_PREFERENCES_TOOL = {
   type: "function",

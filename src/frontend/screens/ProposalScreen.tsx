@@ -13,7 +13,9 @@ export default function ProposalScreen() {
         <>
           <h1 className="plan-time">{plan.time}</h1>
           <div className="plan-venue">
-            {plan.theater} · {plan.format} · ${plan.price}
+            {[plan.theater, plan.format !== 'Activity' ? plan.format : null, plan.price > 0 ? `$${plan.price}` : null]
+              .filter(Boolean)
+              .join(' · ')}
           </div>
         </>
       ) : (

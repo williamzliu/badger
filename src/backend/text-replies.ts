@@ -1,6 +1,6 @@
 import type { Participant, Preferences, Session } from '../shared/types.js';
 
-const DAYS = ['friday', 'saturday', 'sunday'] as const;
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
 function candidateMinutes(time: string): number | undefined {
   const match = time.match(/\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i);
@@ -13,7 +13,9 @@ function candidateMinutes(time: string): number | undefined {
 }
 
 function mentionedDays(text: string): Set<string> {
-  if (/\bfriday\s+(?:through|thru|to|-)\s+sunday\b/.test(text)) return new Set(DAYS);
+  if (/\bfriday\s+(?:through|thru|to|-)\s+sunday\b/.test(text)) {
+    return new Set(['friday', 'saturday', 'sunday']);
+  }
   if (/\b(?:all|whole)\s+weekend\b/.test(text)) return new Set(['saturday', 'sunday']);
   return new Set(DAYS.filter((day) => text.includes(day)));
 }

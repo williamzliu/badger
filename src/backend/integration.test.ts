@@ -67,6 +67,53 @@ const confirmation = await app.inject({ method: 'POST', url: `/sessions/${sessio
 assert.equal(confirmation.json().status, 'COMMITTED');
 assert.equal(calls.confirmation, 1);
 
+const latePreferences = await app.inject({
+  method: 'POST',
+  url: '/internal/preferences',
+  payload: {
+    sessionId: session.id,
+    participantId: participant.id,
+    availability: [],
+    hardVetoes: ['all_times'],
+    preferences: ['no_call'],
+    flexibility: 0,
+    summary: 'Late result from a completed call',
+  },
+});
+assert.equal(latePreferences.statusCode, 200);
+assert.equal(latePreferences.json().status, 'COMMITTED');
+assert.equal(calls.preferences, 1);
+
+const unavailableCreated = await app.inject({
+  method: 'POST',
+  url: '/sessions',
+  payload: { hostName: 'Host', goal: 'Unavailable participant test' },
+});
+const unavailableSession = unavailableCreated.json();
+const unavailableAdded = await app.inject({
+  method: 'POST',
+  url: `/sessions/${unavailableSession.id}/participants`,
+  payload: { name: 'Taylor', phone: '+15550000999' },
+});
+const unavailableParticipant = unavailableAdded.json();
+await app.inject({ method: 'POST', url: `/sessions/${unavailableSession.id}/start` });
+const unavailablePreferences = await app.inject({
+  method: 'POST',
+  url: '/internal/preferences',
+  payload: {
+    sessionId: unavailableSession.id,
+    participantId: unavailableParticipant.id,
+    availability: [],
+    hardVetoes: ['all_times'],
+    preferences: ['no_call'],
+    flexibility: 0,
+    summary: 'Unavailable at every proposed time',
+  },
+});
+assert.equal(unavailablePreferences.statusCode, 200);
+assert.equal(unavailablePreferences.json().status, 'CANCELLED');
+assert.equal(unavailablePreferences.json().participants[0].status, 'DECLINED');
+
 const webhook = await app.inject({
   method: 'POST',
   url: '/webhooks/cartesia',

@@ -247,7 +247,7 @@ export class LiveCommunications implements Communications {
           await this.safeSend(
             session,
             participant,
-            "I couldn't map that to a showtime. Reply with a day and time, like ‘Saturday evening’.",
+            "I couldn't map that to an option. Reply with a day and time, like ‘Saturday evening’.",
             `clarify:${session.id}:${participant.id}:${event.id}`,
           );
           return;

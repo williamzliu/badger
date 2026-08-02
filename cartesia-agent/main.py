@@ -2,6 +2,7 @@ import os
 from typing import Annotated
 
 import httpx
+from line.events import CallEnded, CallStarted, UserTurnEnded
 from line.llm_agent import LlmAgent, LlmConfig, end_call, loopback_tool
 from line.voice_agent_app import VoiceAgentApp
 
@@ -19,7 +20,10 @@ After the participant consents:
 7. Thank them and call end_call.
 
 Use short questions. Never mention another participant's answers. Never invent an answer.
-Normalize time windows to lowercase snake_case labels such as friday_after_8 or saturday_afternoon.
+When speaking, always use natural phrases such as "Friday after eight" or "Saturday afternoon."
+Never speak underscores, snake_case, JSON, field names, or internal identifiers aloud.
+Only inside submit_preferences tool arguments, normalize time windows to lowercase snake_case labels
+such as friday_after_8 or saturday_afternoon.
 Flexibility is a number from 0 (not flexible) to 1 (very flexible).
 If the participant does not consent, apologize and call end_call without submitting preferences.
 """
@@ -87,8 +91,16 @@ async def get_agent(env, call_request):
                     "summary": summary,
                 },
             )
-            response.raise_for_status()
-
+        if response.is_client_error:
+            # The session may have advanced while this call was still ending.
+            # Do not let the model retry the same stale submission repeatedly.
+            submitted = True
+            try:
+                detail = response.json().get("error", "session already advanced")
+            except (ValueError, AttributeError):
+                detail = "session already advanced"
+            return f"Preferences were not needed: {detail}. Do not retry. Thank the participant and end the call."
+        response.raise_for_status()
         submitted = True
         return "Preferences saved. Thank the participant briefly, then end the call."
 
@@ -97,7 +109,7 @@ async def get_agent(env, call_request):
         f"{host_name} asked me to coordinate {goal}. "
         "This should take about thirty seconds. Is now okay?"
     )
-    return LlmAgent(
+    agent = LlmAgent(
         model=os.getenv("BADGER_LLM_MODEL", "gpt-5.4"),
         api_key=required_env("OPENAI_API_KEY"),
         tools=[
@@ -115,6 +127,12 @@ async def get_agent(env, call_request):
             max_tokens=180,
         ),
     )
+    # Telephony noise can emit a false UserTurnStarted and cancel speech. Badger's
+    # prompts are deliberately short, so finishing each prompt is more reliable
+    # than barge-in for the demo; caller turns still run on UserTurnEnded.
+    run_filter = [CallStarted, UserTurnEnded, CallEnded]
+    cancel_filter = []
+    return (agent, run_filter, cancel_filter)
 
 
 app = VoiceAgentApp(get_agent=get_agent)

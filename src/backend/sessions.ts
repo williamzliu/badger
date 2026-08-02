@@ -11,7 +11,7 @@ import {
   type Session,
   type SessionStatus,
 } from '../shared/types.js';
-import { mockCandidates } from './mocks.js';
+import { candidatesForGoal } from './mocks.js';
 type SessionRow = {
   id: string;
   host_name: string;
@@ -68,7 +68,7 @@ export class SessionStore {
       now,
     );
     this.db.transaction(() => {
-      for (const candidate of mockCandidates) {
+      for (const candidate of candidatesForGoal(input.goal)) {
         this.db.prepare('INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
           randomUUID(),
           id,
