@@ -88,7 +88,7 @@ export class MockDriver {
         this.emitAdhoc('call.failed', `Couldn't reach ${participant.name} — texting instead`);
         break;
       case 'sms-reply':
-        this.emitAdhoc('sms.received', `${participant.name} replied by text`);
+        this.emitAdhoc('message.received', `${participant.name} replied by text`);
         break;
       case 'confirm-participant': {
         participant.status = 'CONFIRMED';

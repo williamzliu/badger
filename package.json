@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/backend/server.ts",
-    "start": "tsx src/backend/server.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/backend/server.ts",
+    "start": "tsx --env-file-if-exists=.env src/backend/server.ts",
     "check": "tsc --noEmit",
     "test": "npm run test:backend && npm run test:voice",
     "test:foundation": "tsx src/backend/foundation.test.ts",

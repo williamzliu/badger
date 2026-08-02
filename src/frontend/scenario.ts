@@ -38,7 +38,7 @@ export function buildScenario(session: Session): Step[] {
   people.forEach((person, i) => {
     steps.push({
       delay: i === 0 ? 900 : 420,
-      type: 'sms.sent',
+      type: 'message.sent',
       checkpoint: i === people.length - 1 ? 'texted' : undefined,
       message: () => `Texted ${person.name} — ${session.hostName} wants the group in`,
       apply: (s) => {
@@ -52,7 +52,7 @@ export function buildScenario(session: Session): Step[] {
   people.forEach((person, i) => {
     steps.push({
       delay: i === 0 ? 1900 : 950,
-      type: 'call.ringing',
+      type: 'call.requested',
       checkpoint: i === people.length - 1 ? 'calling' : undefined,
       message: () => `Calling ${person.name}…`,
       apply: (s) => {
@@ -85,7 +85,7 @@ export function buildScenario(session: Session): Step[] {
   });
   steps.push({
     delay: 700,
-    type: 'sms.sent',
+    type: 'message.sent',
     message: () => `Asked ${blocker.name} by text: when are you free this weekend?`,
   });
 
@@ -107,7 +107,7 @@ export function buildScenario(session: Session): Step[] {
 
   steps.push({
     delay: 2600,
-    type: 'sms.received',
+    type: 'message.received',
     message: () => `${blocker.name} replied by text`,
   });
   steps.push({
@@ -149,7 +149,7 @@ export function buildScenario(session: Session): Step[] {
   });
   steps.push({
     delay: 5200,
-    type: 'sms.received',
+    type: 'message.received',
     message: () => `${blocker.name} replied — Friday works`,
   });
   steps.push({
@@ -202,7 +202,7 @@ export function buildScenario(session: Session): Step[] {
   });
   steps.push({
     delay: 700,
-    type: 'sms.sent',
+    type: 'message.sent',
     message: () => 'Confirmation texts sent to everyone',
   });
 

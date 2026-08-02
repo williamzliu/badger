@@ -5,7 +5,9 @@ import Masthead from '../components/Masthead';
 const STATUS_TEXT: Record<ParticipantStatus, string> = {
   PENDING: 'Waiting',
   TEXTED: 'Texted',
-  CALLING: 'On the phone',
+  // Per the voice contract: don't claim "ringing" — Cartesia's lifecycle
+  // starts at call_started, so CALLING only means the call was requested.
+  CALLING: 'Calling',
   IN_CALL: 'On the phone',
   RESPONDED: 'Responded',
   NEEDS_FOLLOWUP: 'Following up',
