@@ -114,7 +114,12 @@ export class LiveCommunications implements Communications {
       if (!target || !candidate) return;
       const fallback = `Would ${candidate.time} at ${candidate.theater} work for you? Reply YES or tell me what blocks you.`;
       const planned = await this.plannedMessage(session, fallback, target);
-      const sent = await this.safeSend(session, target, planned.message, `flex:${session.id}:${candidate.id}:${target.id}`);
+      // Key includes the ask round (count of flexibility.requested events) so
+      // a genuinely re-raised question sends, while duplicate evaluate() runs
+      // for the SAME outstanding ask stay deduped by the send cache.
+      const askRound = this.config.events.list(session.id)
+        .filter((item) => item.type === 'flexibility.requested').length;
+      const sent = await this.safeSend(session, target, planned.message, `flex:${session.id}:${candidate.id}:${target.id}:${askRound}`);
       await this.recordPlannerOutcome(session, planned.decision, sent, sent ? 'Flexibility request sent' : 'Flexibility request failed');
       return;
     }
@@ -205,10 +210,18 @@ export class LiveCommunications implements Communications {
     if (event.type === 'preferences.received' && !participant.preferences) {
       const submitted = event.privateData.preferences as ParticipantPreferences | undefined;
       if (!submitted) return;
-      const previousStatus = session.status;
-      this.config.workflow.recordPreferences(session, participant, submitted);
-      const fresh = this.config.sessions.get(session.id);
-      if (fresh) await this.afterPreferences(fresh, previousStatus);
+      // A call can finish after the session has moved on (e.g. an optional
+      // participant's result arriving during PROPOSING, or after cancel).
+      // recordPreferences would throw — treat a late result as a no-op.
+      if (!['COLLECTING', 'RESOLVING'].includes(session.status)) return;
+      try {
+        const previousStatus = session.status;
+        this.config.workflow.recordPreferences(session, participant, submitted);
+        const fresh = this.config.sessions.get(session.id);
+        if (fresh) await this.afterPreferences(fresh, previousStatus);
+      } catch (error) {
+        this.integrationFailure(session, participant, 'voice preferences', error);
+      }
     }
   }
 
@@ -227,6 +240,19 @@ export class LiveCommunications implements Communications {
         (session.status === 'PROPOSING' && ['PROPOSED', 'CONFIRMED'].includes(participant.status)) ||
         (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP');
       if (!rejectsCandidate) {
+        // A bare "no" from someone who already gave availability most likely
+        // answers a superseded proposal (e.g. the second of two simultaneous
+        // "no" replies after the first already re-planned) — clarify instead
+        // of cancelling the whole session. STOP remains a hard exit above.
+        if (participant.preferences) {
+          await this.safeSend(
+            session,
+            participant,
+            "Can't make that time, or are you out entirely? Reply STOP if you're out.",
+            `decline-clarify:${session.id}:${participant.id}:${event.id}`,
+          );
+          return;
+        }
         this.config.workflow.decline(session, participant);
         return;
       }

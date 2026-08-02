@@ -195,7 +195,21 @@ export class BadgerWorkflow {
       }))
       .sort((a, b) => b.feasible - a.feasible);
     const best = ranked[0];
-    if (!best || !best.blockers.length) throw new Error('No candidate available for conflict resolution');
+    if (!best || !best.blockers.length) {
+      // Every option is vetoed — end gracefully. Throwing here used to leave
+      // the session persisted in MATCHING with no legal transition out
+      // (dashboard stuck on "Checking viable options…" forever).
+      session.status = 'CANCELLED';
+      this.sessions.updateSession(session);
+      this.events.append(session.id, 'matching.failed', 'No option works for everyone', {});
+      this.events.append(session.id, 'session.cancelled', 'No time works for everyone');
+      return;
+    }
+
+    // Capture the outstanding ask before clearing, so an unchanged
+    // target+candidate doesn't re-emit conflict events on every evaluate.
+    const previousTargetId = session.participants.find((m) => m.status === 'NEEDS_FOLLOWUP')?.id;
+    const previousCandidateId = session.selectedCandidateId;
 
     // Clear any stale follow-up target from a previous resolution round so
     // exactly one participant is ever NEEDS_FOLLOWUP.
@@ -213,14 +227,17 @@ export class BadgerWorkflow {
     target.status = 'NEEDS_FOLLOWUP';
     this.sessions.updateParticipant(target);
     this.sessions.updateSession(session);
-    this.events.append(session.id, 'conflict.detected', 'One availability conflict detected', {
-      candidateId: best.candidate.id,
-      blockerCount: best.blockers.length,
-    });
-    this.events.append(session.id, 'flexibility.requested', `Asking ${target.name} about flexibility`, {
-      participantId: target.id,
-      candidateId: best.candidate.id,
-    });
+    const sameAsk = previousTargetId === target.id && previousCandidateId === best.candidate.id;
+    if (!sameAsk) {
+      this.events.append(session.id, 'conflict.detected', 'One availability conflict detected', {
+        candidateId: best.candidate.id,
+        blockerCount: best.blockers.length,
+      });
+      this.events.append(session.id, 'flexibility.requested', `Asking ${target.name} about flexibility`, {
+        participantId: target.id,
+        candidateId: best.candidate.id,
+      });
+    }
   }
 
   private propose(session: Session, required: Participant[], candidate: Candidate): void {

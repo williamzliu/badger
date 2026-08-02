@@ -42,6 +42,6 @@ export class EventLog {
     return true;
   }
 
-  list(sessionId:string):BadgerEvent[]{return (this.db.prepare('SELECT * FROM events WHERE session_id=? ORDER BY timestamp, rowid').all(sessionId)as any[]).map(row=>({id:row.id,sessionId:row.session_id,type:row.type,timestamp:row.timestamp,publicMessage:row.public_message,privateData:JSON.parse(row.private_data_json)}));}
+  list(sessionId:string):BadgerEvent[]{return (this.db.prepare('SELECT * FROM events WHERE session_id=? ORDER BY rowid').all(sessionId)as any[]).map(row=>({id:row.id,sessionId:row.session_id,type:row.type,timestamp:row.timestamp,publicMessage:row.public_message,privateData:JSON.parse(row.private_data_json)}));}
   subscribe(sessionId:string,subscriber:Subscriber){const set=this.subscribers.get(sessionId)??new Set<Subscriber>();set.add(subscriber);this.subscribers.set(sessionId,set);return()=>set.delete(subscriber);}
 }

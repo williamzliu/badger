@@ -273,6 +273,12 @@ export function classifyInboundMessage(body: string): InboundMessageIntent {
   if (["stop", "stopall", "unsubscribe", "cancel", "end", "quit"].includes(bare)) {
     return "opt_out";
   }
+  // A reply naming a day ("Saturday works for me", "can't do Friday") is a
+  // counter-offer/constraint, not a yes/no to the current proposal — let the
+  // freeform parser turn it into availability instead.
+  if (/\b(?:friday|saturday|sunday|monday|tuesday|wednesday|thursday)\b/.test(normalized)) {
+    return "freeform";
+  }
   if (
     ["no", "n", "nope", "nah", "no thanks", "no thank you", "im out", "i'm out", "count me out", "decline"].includes(bare) ||
     /\b(?:can(?:not|'t)|won't)\s+(?:make|do)\b/.test(normalized) ||
