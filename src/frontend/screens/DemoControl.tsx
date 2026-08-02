@@ -18,9 +18,7 @@ export default function DemoControl() {
       setConnected(true);
     });
     sendRef.current = channel.send;
-    const probe = window.setTimeout(() => setConnected((c) => c), 2000);
     return () => {
-      window.clearTimeout(probe);
       channel.close();
     };
   }, []);

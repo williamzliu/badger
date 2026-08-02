@@ -55,6 +55,12 @@ export class MockDriver {
   skipTo(checkpoint: Checkpoint) {
     if (!this.session) return;
     this.ensureSteps();
+    // A checkpoint that's already behind us is a no-op — otherwise a stray
+    // re-click would fast-forward the entire script to the finale on stage.
+    if (!this.steps.slice(this.index).some((step) => step.checkpoint === checkpoint)) {
+      this.notify();
+      return;
+    }
     this.stopTimer();
     while (this.index < this.steps.length) {
       const step = this.steps[this.index];

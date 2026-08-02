@@ -636,6 +636,6 @@
 }
 
 .mode-banner.is-mock {
-  color: var(--muted);
+  color: var(--ink-2);
   background: var(--paper);
 }

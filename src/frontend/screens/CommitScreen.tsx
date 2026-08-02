@@ -5,11 +5,15 @@ export default function CommitScreen() {
   const session = snap.session;
   if (!session) return null;
   const plan = snap.selectedCandidate;
+  // The backend commits on required participants only — count the same way,
+  // so an optional straggler can't make the finale read "3/4 committed."
+  const required = session.participants.filter((p) => p.required);
+  const confirmed = required.filter((p) => p.status === 'CONFIRMED').length;
 
   return (
     <div className="commit">
       <h1 className="commit-headline">
-        {snap.confirmedCount}/{snap.totalCount} <span className="commit-word">committed.</span>
+        {confirmed}/{required.length} <span className="commit-word">committed.</span>
       </h1>
       {plan && (
         <div className="commit-plan">

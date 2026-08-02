@@ -17,7 +17,7 @@ Badger coordinates a group commitment (for example, “See The Odyssey this week
 Use Node.js 22 or newer.
 
 ```bash
-cd /Users/kaustubhbhal/badger/badger
+cd badger
 npm install
 cp .env.example .env
 npm run dev        # backend on :3000
