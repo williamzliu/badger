@@ -137,8 +137,11 @@ export class LiveCommunications implements Communications {
     const required = session.participants.filter((participant) => participant.required);
     const fallback = MESSAGE_COPY.commitment(candidate.time, candidate.theater, required.length, required.length);
     const planned = await this.plannedMessage(session, fallback);
-    const sends = await Promise.all(session.participants.map((participant) =>
-      this.safeSend(session, participant, planned.message, `commit:${session.id}:${candidate.id}:${participant.id}`)));
+    // Opt-out is a hard stop: declined participants get no further messages.
+    const sends = await Promise.all(session.participants
+      .filter((participant) => participant.status !== 'DECLINED')
+      .map((participant) =>
+        this.safeSend(session, participant, planned.message, `commit:${session.id}:${candidate.id}:${participant.id}`)));
     const sent = sends.every(Boolean);
     await this.recordPlannerOutcome(session, planned.decision, sent, sent ? 'Commitment sent to all participants' : 'One or more commitment messages failed');
   }
@@ -162,7 +165,11 @@ export class LiveCommunications implements Communications {
       await delay(index * (this.config.callStaggerMs ?? 1_000), this.abort.signal);
       const session = this.config.sessions.get(sessionId);
       const participant = session?.participants.find((item) => item.id === original.id);
-      if (!session || !participant || this.abort.signal.aborted || participant.status !== 'TEXTED') return;
+      // Re-check BOTH statuses at fire time: a decline/STOP inside the call
+      // delay cancels the session, and no phone may ring after that.
+      if (!session || !participant || this.abort.signal.aborted) return;
+      if (!['CONTACTING', 'COLLECTING'].includes(session.status)) return;
+      if (participant.status !== 'TEXTED') return;
       this.config.workflow.markCalling(session, participant);
       try {
         const metadata = callMetadata(session, participant);

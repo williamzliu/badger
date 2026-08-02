@@ -142,6 +142,9 @@ export class BadgerWorkflow {
   }
 
   decline(session: Session, participant: Participant): Session {
+    // A committed plan stays committed; a cancelled session stays quiet. A
+    // stray "no" after the finale must not flip the outcome on screen.
+    if (['COMMITTED', 'CANCELLED'].includes(session.status)) return session;
     if (participant.status === 'DECLINED') return session;
     participant.status = 'DECLINED';
     this.sessions.updateParticipant(participant);
@@ -184,6 +187,14 @@ export class BadgerWorkflow {
     const best = ranked[0];
     if (!best || !best.blockers.length) throw new Error('No candidate available for conflict resolution');
 
+    // Clear any stale follow-up target from a previous resolution round so
+    // exactly one participant is ever NEEDS_FOLLOWUP.
+    for (const member of session.participants) {
+      if (member.status === 'NEEDS_FOLLOWUP') {
+        member.status = 'RESPONDED';
+        this.sessions.updateParticipant(member);
+      }
+    }
     const target = [...best.blockers].sort(
       (a, b) => (b.preferences?.flexibility ?? 0) - (a.preferences?.flexibility ?? 0),
     )[0]!;

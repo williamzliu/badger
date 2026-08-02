@@ -146,7 +146,14 @@ export class SessionStore {
   }
 
   findActiveParticipantByPhone(phone: string): { session: Session; participant: Participant } | undefined {
-    const normalized = normalizeE164(phone);
+    // Inbound senders can be short codes or email-based iMessage IDs — those
+    // are simply "no match", never an exception that kills the reply listener.
+    let normalized: string;
+    try {
+      normalized = normalizeE164(phone);
+    } catch {
+      return undefined;
+    }
     const row = this.db.prepare(`
       SELECT p.* FROM participants p
       JOIN sessions s ON s.id = p.session_id

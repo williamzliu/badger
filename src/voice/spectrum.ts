@@ -216,14 +216,20 @@ export class SpectrumMessagingClient {
       for await (const message of transport.inbound()) {
         if (input.signal?.aborted) break;
         if (this.received.has(message.messageId)) continue;
-        const context = await input.resolveContext(message.from);
-        if (!context) continue;
-        this.received.add(message.messageId);
+        // One malformed message must never kill the listener for the rest of
+        // the demo — log, skip, keep consuming.
         try {
-          await processSpectrumInbound({ message, context, emit: input.emit });
+          const context = await input.resolveContext(message.from);
+          if (!context) continue;
+          this.received.add(message.messageId);
+          try {
+            await processSpectrumInbound({ message, context, emit: input.emit });
+          } catch (error) {
+            this.received.delete(message.messageId);
+            throw error;
+          }
         } catch (error) {
-          this.received.delete(message.messageId);
-          throw error;
+          console.error("[badger.spectrum] inbound message failed", error);
         }
       }
     } finally {
@@ -262,16 +268,18 @@ export async function sendBadgerMessage(
 
 export function classifyInboundMessage(body: string): InboundMessageIntent {
   const normalized = body.trim().toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, " ");
-  if (["stop", "stopall", "unsubscribe", "cancel", "end", "quit"].includes(normalized)) {
+  // "Yes!" / "nope." — strip trailing punctuation before exact matching.
+  const bare = normalized.replace(/[.!?…]+$/, "").trim();
+  if (["stop", "stopall", "unsubscribe", "cancel", "end", "quit"].includes(bare)) {
     return "opt_out";
   }
   if (
-    ["no", "n", "nope", "decline"].includes(normalized) ||
+    ["no", "n", "nope", "nah", "no thanks", "no thank you", "im out", "i'm out", "count me out", "decline"].includes(bare) ||
     /\b(?:can(?:not|'t)|won't)\s+(?:make|do)\b/.test(normalized) ||
     /\b(?:not able to make|doesn't work|does not work)\b/.test(normalized)
   ) return "decline";
   if (
-    ["yes", "y", "confirm", "confirmed"].includes(normalized) ||
+    ["yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed"].includes(bare) ||
     /\b(?:i can make (?:it|that)|that works|works for me|sounds good|count me in|i'm in|i'll be there)\b/.test(normalized)
   ) return "confirm";
   return "freeform";
