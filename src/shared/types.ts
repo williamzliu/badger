@@ -101,6 +101,8 @@ export type CallMetadata = {
   participantName: string;
   hostName: string;
   goal: string;
+  purpose?: "availability" | "flexibility";
+  question?: string;
 };
 
 export type EventSink = (event: BadgerEvent) => void | Promise<void>;
@@ -125,6 +127,8 @@ export function parseCallMetadata(value: unknown): CallMetadata {
     participantName: requireString(value.participantName, "metadata.participantName"),
     hostName: requireString(value.hostName, "metadata.hostName"),
     goal: requireString(value.goal, "metadata.goal"),
+    ...(value.purpose === 'availability' || value.purpose === 'flexibility' ? { purpose: value.purpose } : {}),
+    ...(typeof value.question === 'string' && value.question.trim() ? { question: value.question.trim() } : {}),
   };
 }
 

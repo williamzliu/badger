@@ -56,7 +56,8 @@ export async function createSession(input: DraftInput): Promise<Session> {
 export async function startSession(): Promise<void> {
   const id = requireSessionId();
   connectEvents(id);
-  await http('POST', `/sessions/${id}/start`, {});
+  const session = await http<Session>('POST', `/sessions/${id}/start`, {});
+  badger.applySession(session);
   scheduleRefetch();
 }
 

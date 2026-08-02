@@ -8,10 +8,11 @@ import { createServer } from './server.js';
 import { SessionStore } from './sessions.js';
 import { BadgerWorkflow } from './state-machine.js';
 
-const calls = { start: 0, stop: 0, contact: 0, preferences: 0, confirmation: 0, webhook: 0 };
+const calls = { start: 0, stop: 0, prewarm: 0, contact: 0, preferences: 0, confirmation: 0, webhook: 0 };
 const communications: Communications = {
   async start() { calls.start += 1; },
   async stop() { calls.stop += 1; },
+  async prewarm() { calls.prewarm += 1; },
   async contact() { calls.contact += 1; },
   async afterPreferences() { calls.preferences += 1; },
   async afterConfirmation() { calls.confirmation += 1; },
@@ -25,6 +26,7 @@ const communications: Communications = {
 const { app } = createServer(':memory:', { communications });
 const created = await app.inject({ method: 'POST', url: '/sessions', payload: { hostName: 'Host', goal: 'Demo' } });
 const session = created.json();
+assert.equal(calls.prewarm, 1);
 const added = await app.inject({ method: 'POST', url: `/sessions/${session.id}/participants`, payload: { name: 'Alex', phone: '+15550000123' } });
 const participant = added.json();
 await app.inject({ method: 'POST', url: `/sessions/${session.id}/start` });
@@ -128,16 +130,21 @@ const liveDb = openDatabase(':memory:');
 const liveStore = new SessionStore(liveDb);
 const sharedEvents = new EventLog(liveDb);
 const liveWorkflow = new BadgerWorkflow(liveStore, sharedEvents);
-const draft = liveStore.create({ hostName: 'Host', goal: 'Movie' });
+const draft = liveStore.create({ hostName: 'Host', goal: 'hang' });
 liveStore.addParticipant(draft, { name: 'Alex', phone: '+15550000456' });
 const proposing = liveStore.get(draft.id)!;
 liveWorkflow.start(proposing);
+const liveSentBodies: string[] = [];
 const inboundFactory: SpectrumTransportFactory = async () => ({
-  async sendText() { return { messageId: 'sent', status: 'sent', service: 'iMessage' }; },
+  async sendText(_to, body) {
+    liveSentBodies.push(body);
+    return { messageId: 'sent', status: 'sent', service: 'iMessage' };
+  },
   async *inbound() {
+    yield { messageId: 'reply-ambiguous-no', from: '+15550000456', body: "can't make it", timestamp: new Date().toISOString(), service: 'iMessage' };
     yield { messageId: 'reply-prefs', from: '+15550000456', body: 'all day', timestamp: new Date().toISOString(), service: 'iMessage' };
-    yield { messageId: 'reply-decline', from: '+15550000456', body: 'I can’t make that', timestamp: new Date().toISOString(), service: 'iMessage' };
-    yield { messageId: 'reply-confirm', from: '+15550000456', body: 'YES', timestamp: new Date().toISOString(), service: 'iMessage' };
+    yield { messageId: 'reply-counter', from: '+15550000456', body: 'no can we do thursday?', timestamp: new Date().toISOString(), service: 'iMessage' };
+    yield { messageId: 'reply-confirm', from: '+15550000456', body: 'Thursday works', timestamp: new Date().toISOString(), service: 'iMessage' };
   },
   async stop() {},
 });
@@ -159,6 +166,8 @@ const live = new LiveCommunications({
         participantId: null,
         message: 'Badger coordination message',
         reason: 'Validated test action',
+        channel: 'SMS',
+        delaySeconds: 0,
       };
     },
     async recordOutcome() {},
@@ -169,9 +178,72 @@ for (let attempt = 0; attempt < 20 && liveStore.get(draft.id)?.status !== 'COMMI
   await new Promise((resolve) => setTimeout(resolve, 2));
 }
 assert.equal(liveStore.get(draft.id)?.status, 'COMMITTED');
+assert.match(
+  liveStore.get(draft.id)?.candidates.find((candidate) => candidate.id === liveStore.get(draft.id)?.selectedCandidateId)?.time ?? '',
+  /^Thursday /,
+);
 assert.equal(sharedEvents.list(draft.id).some((event) => event.type === 'proposal.rejected'), true);
 assert.equal(sharedEvents.list(draft.id).some((event) => event.type === 'session.cancelled'), false);
+assert.equal(liveSentBodies.some((body) => body.includes('another day and time')), true);
 await live.stop();
+
+const orchestrationDb = openDatabase(':memory:');
+const orchestrationStore = new SessionStore(orchestrationDb);
+const orchestrationEvents = new EventLog(orchestrationDb);
+const orchestrationWorkflow = new BadgerWorkflow(orchestrationStore, orchestrationEvents);
+const orchestrationDraft = orchestrationStore.create({ hostName: 'Host', goal: 'go karting this week' });
+const orchestrationParticipant = orchestrationStore.addParticipant(orchestrationDraft, { name: 'Solo', phone: '+15550000777' });
+const orchestrationSession = orchestrationStore.get(orchestrationDraft.id)!;
+orchestrationWorkflow.start(orchestrationSession);
+const sentBodies: string[] = [];
+const orchestrationTransport: SpectrumTransportFactory = async () => ({
+  async sendText(_to, body) {
+    sentBodies.push(body);
+    return { messageId: 'planned-message', status: 'sent', service: 'iMessage' };
+  },
+  async *inbound() {},
+  async stop() {},
+});
+const orchestrated = new LiveCommunications({
+  sessions: orchestrationStore,
+  events: orchestrationEvents,
+  workflow: orchestrationWorkflow,
+  cartesia: new CartesiaClient({
+    apiKey: 'key', agentId: 'agent', fromNumberId: 'number',
+    fetch: async () => new Response(JSON.stringify({ calls: [{ agent_call_id: 'planned-call', number: '+15550000777' }] }), { status: 200 }),
+  }),
+  spectrum: new SpectrumMessagingClient({ projectId: 'project', projectSecret: 'secret' }, orchestrationTransport),
+  cartesiaWebhookSecret: 'webhook',
+  planner: {
+    async prepare() {
+      return {
+        candidates: [
+          { id: 'researched-one', theater: 'K1 Speed', time: 'Thursday 7 PM', slot: 'thursday_evening', format: 'Go-karting', price: 35, location: 'South San Francisco' },
+          { id: 'researched-two', theater: 'K1 Speed', time: 'Friday 7 PM', slot: 'friday_evening', format: 'Go-karting', price: 35, location: 'South San Francisco' },
+        ],
+        research: [
+          { id: 'researched-one', theater: 'K1 Speed', time: 'Thursday 7 PM', slot: 'thursday_evening', format: 'Go-karting', price: 35, location: 'South San Francisco', sourceUrl: 'https://example.com/thursday', evidence: 'Open Thursday' },
+          { id: 'researched-two', theater: 'K1 Speed', time: 'Friday 7 PM', slot: 'friday_evening', format: 'Go-karting', price: 35, location: 'South San Francisco', sourceUrl: 'https://example.com/friday', evidence: 'Open Friday' },
+        ],
+        outreach: [{ participantId: orchestrationParticipant.id, channel: 'CALL_ONLY' as const, delaySeconds: 0, callAfterSeconds: 0, message: 'Ask for broad availability.', reason: 'Call the host first' }],
+        insights: ['Evidence · Two karting windows are sourced.', 'Plan · Call first; text only if the call fails.'],
+        reason: 'Research before outreach',
+      };
+    },
+    async recommend() { throw new Error('not needed'); },
+    async recordOutcome() {},
+  },
+});
+await orchestrated.start();
+await orchestrated.contact(orchestrationSession);
+for (let attempt = 0; attempt < 20 && !orchestrationEvents.list(orchestrationSession.id).some((event) => event.type === 'call.requested'); attempt += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 2));
+}
+assert.equal(orchestrationStore.get(orchestrationSession.id)?.candidates[0]?.theater, 'K1 Speed');
+assert.equal(sentBodies.length, 0);
+assert.equal(orchestrationEvents.list(orchestrationSession.id).some((event) => event.type === 'research.completed'), true);
+assert.equal(orchestrationEvents.list(orchestrationSession.id).some((event) => event.type === 'call.requested'), true);
+await orchestrated.stop();
 
 const liveEnv = {
   BADGER_LIVE_MODE: 'true',

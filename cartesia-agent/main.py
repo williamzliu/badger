@@ -7,7 +7,7 @@ from line.llm_agent import LlmAgent, LlmConfig, end_call, loopback_tool
 from line.voice_agent_app import VoiceAgentApp
 
 
-SYSTEM_PROMPT = """You are Badger, a concise automated voice coordinator.
+AVAILABILITY_PROMPT = """You are Badger, a concise automated voice coordinator.
 You collect one participant's private scheduling constraints. You never choose the group plan.
 
 After the participant consents:
@@ -27,6 +27,19 @@ such as friday_after_8 or saturday_afternoon.
 Flexibility is a number from 0 (not flexible) to 1 (very flexible).
 If the participant does not consent, apologize, thank them for their time, and call end_call without submitting preferences.
 Always thank the participant before ending any call, no matter how it went.
+"""
+
+FLEXIBILITY_PROMPT = """You are Badger, a concise automated voice coordinator making a targeted follow-up call.
+The group coordinator has supplied one specific compromise question. Ask that question directly, then learn whether
+the participant can make that option or what nearby alternative would work. Do not restart the whole interview.
+
+Before submitting, briefly confirm the participant's complete updated availability, hard vetoes, soft preferences,
+and flexibility. Then call submit_preferences exactly once, thank them, and call end_call. If they reject this one
+option, capture any alternative they volunteer; do not interpret rejection of one option as rejection of every plan.
+Never mention another participant's private answers. Never invent an answer. Use short, natural sentences.
+Never speak underscores, snake_case, JSON, field names, or internal identifiers aloud. Only inside
+submit_preferences arguments, normalize time windows to lowercase snake_case labels. Flexibility is a number from
+0 (not flexible) to 1 (very flexible). Always thank the participant before ending the call.
 """
 
 
@@ -51,6 +64,8 @@ async def get_agent(env, call_request):
     participant_name = required_metadata(metadata, "participantName")
     host_name = required_metadata(metadata, "hostName")
     goal = required_metadata(metadata, "goal")
+    purpose = metadata.get("purpose", "availability")
+    question = metadata.get("question")
     submitted = False
 
     @loopback_tool
@@ -105,11 +120,19 @@ async def get_agent(env, call_request):
         submitted = True
         return "Preferences saved. Thank the participant briefly, then end the call."
 
-    introduction = (
-        f"Hey {participant_name}, I'm Badger, an automated assistant. "
-        f"{host_name} asked me to coordinate {goal}. "
-        "This should take about thirty seconds. Is now okay?"
-    )
+    if purpose == "flexibility" and isinstance(question, str) and question.strip():
+        system_prompt = FLEXIBILITY_PROMPT
+        introduction = (
+            f"Hey {participant_name}, it's Badger again. I have one quick follow-up for "
+            f"{host_name} about {goal}. {question.strip()}"
+        )
+    else:
+        system_prompt = AVAILABILITY_PROMPT
+        introduction = (
+            f"Hey {participant_name}, I'm Badger. "
+            f"{host_name} sent me to gather your availability so I can help plan {goal}. "
+            "This should take about thirty seconds. Is now a good time?"
+        )
     agent = LlmAgent(
         model=os.getenv("BADGER_LLM_MODEL", "gpt-5.4"),
         api_key=required_env("OPENAI_API_KEY"),
@@ -122,7 +145,7 @@ async def get_agent(env, call_request):
             ),
         ],
         config=LlmConfig(
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             introduction=introduction,
             temperature=0.2,
             max_tokens=180,

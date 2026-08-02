@@ -2,17 +2,20 @@ import { randomUUID } from "node:crypto";
 import { Spectrum } from "@spectrum-ts/core";
 import { imessage } from "@spectrum-ts/imessage";
 import { type BadgerEvent, type EventSink } from "../shared/types.js";
+import { formatCandidateTime } from "../shared/display.js";
 
 const E164_PHONE = /^\+[1-9]\d{7,14}$/;
+
+export const displayCandidateTime = formatCandidateTime;
 
 export const MESSAGE_COPY = {
   opening: (hostName: string, goal: string) =>
     `${hostName} asked Badger to coordinate ${goal}. I'll call you in about 10 seconds. Reply STOP to opt out.`,
-  missedCall: () => "I couldn't reach you. When are you free Friday through Sunday?",
+  missedCall: () => "I couldn't reach you. When are you free for the plan?",
   proposal: (time: string, theater: string) =>
-    `Badger found ${time} at ${theater}. Can you make it? Reply YES or tell me what blocks you.`,
+    `Badger found ${displayCandidateTime(time)} at ${theater}. Can you make it? Reply YES or tell me what blocks you.`,
   commitment: (time: string, theater: string, confirmed: number, total: number) =>
-    `Locked: ${time} at ${theater}. ${confirmed}/${total} confirmed.`,
+    `Locked: ${displayCandidateTime(time)} at ${theater}. ${confirmed}/${total} confirmed.`,
 } as const;
 
 export type SpectrumService = "iMessage" | "SMS" | "RCS" | "unknown";
@@ -281,14 +284,30 @@ export function classifyInboundMessage(body: string): InboundMessageIntent {
   }
   if (
     ["no", "n", "nope", "nah", "no thanks", "no thank you", "im out", "i'm out", "count me out", "decline"].includes(bare) ||
+    /^(?:no|nope|nah)\b/.test(normalized) ||
     /\b(?:can(?:not|'t)|won't)\s+(?:make|do)\b/.test(normalized) ||
     /\b(?:not able to make|doesn't work|does not work)\b/.test(normalized)
   ) return "decline";
   if (
-    ["yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed"].includes(bare) ||
-    /\b(?:i can make (?:it|that)|that works|works for me|sounds good|count me in|i'm in|i'll be there)\b/.test(normalized)
+    [
+      "yes", "y", "yea", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed",
+      "absolutely", "definitely", "perfect", "great", "cool", "deal", "bet", "works", "i'm down",
+      "im down", "i am down", "i'm in", "im in", "all good",
+    ].includes(bare) ||
+    /\b(?:i can make (?:it|that)|that (?:works|should work|will work|is fine)|works? for me|sounds good|count me in|i(?:'m| am) (?:in|down|good|free)|i'll be there|let's do it|see you there|can do|fine by me)\b/.test(normalized)
   ) return "confirm";
   return "freeform";
+}
+
+/** Contextual affirmations such as "Friday works" are only confirmations once
+ * Badger has proposed a concrete option. During collection, the same words are
+ * availability and must remain freeform. */
+export function isNaturalConfirmation(body: string): boolean {
+  const intent = classifyInboundMessage(body);
+  if (intent === 'confirm') return true;
+  if (intent !== 'freeform') return false;
+  const normalized = body.trim().toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, ' ');
+  return /\b(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|tomorrow|tonight|that|it|the plan|the time)\b.*\b(?:works|is good|is fine|should work|will work)\b/.test(normalized);
 }
 
 export async function processSpectrumInbound(input: {

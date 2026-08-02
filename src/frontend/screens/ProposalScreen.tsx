@@ -1,4 +1,6 @@
 import { useBadger } from '../store';
+import { restartSession } from '../actions';
+import { formatCandidateLabel, formatCandidateTime } from '../../shared/display';
 
 export default function ProposalScreen() {
   const snap = useBadger();
@@ -11,9 +13,9 @@ export default function ProposalScreen() {
       <span className="kicker">Badger's plan</span>
       {plan ? (
         <>
-          <h1 className="plan-time">{plan.time}</h1>
+          <h1 className="plan-time">{formatCandidateTime(plan.time)}</h1>
           <div className="plan-venue">
-            {[plan.theater, plan.format !== 'Activity' ? plan.format : null, plan.price > 0 ? `$${plan.price}` : null]
+            {[plan.theater, plan.format !== 'Activity' ? formatCandidateLabel(plan.format) : null, plan.price > 0 ? `$${plan.price}` : null]
               .filter(Boolean)
               .join(' · ')}
           </div>
@@ -43,6 +45,9 @@ export default function ProposalScreen() {
           );
         })}
       </div>
+      <button className="btn-line proposal-reset" type="button" onClick={restartSession}>
+        Start over
+      </button>
     </div>
   );
 }

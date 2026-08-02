@@ -77,10 +77,16 @@ export async function sendBadger(): Promise<void> {
     return;
   }
   badger.setLaunching(true);
-  window.setTimeout(() => badger.setLaunching(false), 2400);
   try {
-    if (mode() === 'mock') driver.play();
-    else await api.startSession();
+    if (mode() === 'mock') {
+      driver.play();
+      window.setTimeout(() => badger.setLaunching(false), 2400);
+    } else {
+      await api.startSession();
+      // The backend has accepted the session and real milestones are already
+      // streaming. Show the live timeline instead of hiding it under a timer.
+      badger.setLaunching(false);
+    }
   } catch (error) {
     badger.setLaunching(false);
     badger.setError((error as Error).message);

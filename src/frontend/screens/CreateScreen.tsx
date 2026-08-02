@@ -5,17 +5,25 @@ import type { DraftParticipant } from '../fixtures';
 import { normalizePhone, prettyPhone, sanitizePhoneInput } from '../phone';
 import Masthead from '../components/Masthead';
 import BadgerMark from '../components/BadgerMark';
+import RotatingStatus from '../components/RotatingStatus';
 
 const EMPTY_ROW: DraftParticipant = { name: '', phone: '', required: true };
 const MIN_OTHERS = 1;
 
 export function LaunchOverlay({ count }: { count: number }) {
+  const phrases = [
+    `Harassing ${count} calendars…`,
+    'Bothering your friends on your behalf…',
+    'Calling people who thought they were safe…',
+    'Weaponizing the follow-up…',
+    'Turning “we should hang” into administrative action…',
+  ];
   return (
     <div className="overlay">
       <span className="overlay-badger">
         <BadgerMark size={64} />
       </span>
-      <div className="overlay-text">Contacting {count} people…</div>
+      <RotatingStatus className="overlay-text" phrases={phrases} />
     </div>
   );
 }
@@ -126,10 +134,8 @@ export default function CreateScreen() {
 
   return (
     <div className="page">
-      <div className={`mode-banner ${snap.mode === 'live' ? 'is-live' : 'is-mock'}`}>
-        {snap.mode === 'live' ? '● LIVE — sends real messages and calls' : 'REHEARSAL — scripted simulation'}
-      </div>
-      <Masthead kicker="Group coordination, delegated" />
+      {snap.mode === 'mock' && <div className="mode-banner is-mock">Rehearsal</div>}
+      <Masthead kicker="harassing your friends, professionally" />
       <div className="create-body">
         <h1 className="create-title">What should your group commit&nbsp;to?</h1>
         <input

@@ -187,6 +187,22 @@
   animation: rise 300ms ease both;
 }
 
+.status-phrase {
+  display: inline-block;
+  animation: status-phrase-in 220ms ease both;
+}
+
+@keyframes status-phrase-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ── Live ─────────────────────────────────────────────────────────── */
 .live-head {
   padding: 30px 0 26px;
@@ -310,6 +326,60 @@
   flex-direction: column;
 }
 
+.sail-trace {
+  padding: 18px 20px 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 88%, var(--accent) 12%);
+}
+
+.sail-trace-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.sail-trace-head .livedot {
+  margin-left: auto;
+}
+
+.sail-mark {
+  display: inline-grid;
+  width: 21px;
+  height: 21px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.sail-thoughts {
+  margin-top: 12px;
+}
+
+.sail-thought {
+  padding: 8px 0;
+  border-top: 1px dotted var(--rule-dot);
+  color: var(--ink-3);
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.sail-thought.is-current {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.sail-trace > .sail-thought {
+  margin-top: 12px;
+}
+
 @media (max-width: 900px) {
   .live-right {
     padding-left: 0;
@@ -431,6 +501,10 @@
   font-size: 23px;
 }
 
+.proposal-reset {
+  margin-top: 28px;
+}
+
 /* ── Committed ────────────────────────────────────────────────────── */
 .commit {
   min-height: 100%;
@@ -483,6 +557,11 @@
   font-size: 14.5px;
   color: var(--ink-3);
   animation: rise 400ms ease 600ms both;
+}
+
+.commit-home {
+  margin-top: 28px;
+  animation: rise 400ms ease 800ms both;
 }
 
 .commit-tagline {
@@ -628,11 +707,6 @@
   font: 700 11px/1 var(--sans);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.mode-banner.is-live {
-  color: #8f1d14;
-  background: #fff4ef;
 }
 
 .mode-banner.is-mock {

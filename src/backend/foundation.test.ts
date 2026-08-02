@@ -23,5 +23,10 @@ assert.deepEqual(activity.candidates.map((candidate) => candidate.slot), [
   'wednesday_evening',
 ]);
 assert.equal(activity.candidates.every((candidate) => candidate.theater === 'K1 Speed and gokart'), true);
-assert.equal(activity.candidates.some((candidate) => candidate.theater.includes('AMC')), false);
+const weekendActivity = store.create({ hostName: 'Kaustubh', goal: 'gokarting this weekend' });
+assert.equal(weekendActivity.candidates.every((candidate) => candidate.theater === 'gokarting'), true);
+assert.deepEqual([...new Set(weekendActivity.candidates.map((candidate) => candidate.slot.split('_')[0]))], [
+  'saturday',
+  'sunday',
+]);
 console.info('foundation test passed');

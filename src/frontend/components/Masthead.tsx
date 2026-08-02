@@ -7,7 +7,7 @@ interface MastheadProps {
 
 export default function Masthead({ kicker, live }: MastheadProps) {
   return (
-    <header className="masthead">
+    <header className={`masthead${live ? ' has-live' : ' kicker-right'}`}>
       <span className="mast-brand">
         <BadgerMark size={30} />
         <span className="name serif">Badger</span>
@@ -18,9 +18,7 @@ export default function Masthead({ kicker, live }: MastheadProps) {
           <span className="livedot" />
           {live}
         </span>
-      ) : (
-        <span />
-      )}
+      ) : null}
     </header>
   );
 }

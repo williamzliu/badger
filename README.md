@@ -7,10 +7,10 @@ Badger coordinates a group commitment (for example, “See The Odyssey this week
 ## Architecture
 
 - **Cartesia** provisions the US phone number and handles calls, transcription, speech, and interruptions.
-- **OpenAI** drives each short one-person voice interview and produces structured preferences.
+- **OpenAI** drives each short one-person voice interview and provides sourced web research through a client-side tool that Sail can invoke.
 - **Photon Spectrum** sends and receives one-to-one iMessage, with managed SMS/RCS fallback.
-- **Sail** is the long-lived group coordinator. Badger persists its full Responses conversation per session, including state updates, strict tool calls, and execution outcomes.
-- **The Fastify backend** compares constraints, chooses the plan, and owns commitment; AI never changes group state by itself.
+- **Sail** is the long-lived group coordinator. It ranks sourced options, reasons about tradeoffs and conflict strategy, and continuously reviews the authoritative group state. Badger persists its complete Responses conversation, tool calls, replies, and outcomes.
+- **The Fastify backend** validates destinations, timing bounds, sourced candidate IDs, hard vetoes, state transitions, idempotency, and final commitment before executing Sail's actions.
 
 ## Local setup
 
@@ -31,7 +31,9 @@ Important values:
 - `CARTESIA_FROM_NUMBER_ID` is the Cartesia phone-number **ID**, not its visible `+1…` number.
 - `SPECTRUM_PROJECT_ID` and `SPECTRUM_PROJECT_SECRET` come from Photon project settings.
 - `BADGER_TOOL_SECRET` must match the secret accepted by `/internal/preferences`.
-- `SAIL_API_KEY` is required in live mode. `SAIL_MODEL` defaults to `zai-org/GLM-5.2-FP8`; `SAIL_TIMEOUT_MS` defaults to 5000 before Badger sends deterministic fallback copy.
+- `SAIL_API_KEY` is required in live mode. The demo defaults to Sail's `openai/gpt-oss-120b` with low reasoning. `SAIL_COMPLETION_WINDOW=asap` explicitly selects Sail's lowest-latency queue; background polling tolerates longer inference without blocking the UI, and `SAIL_TIMEOUT_MS` defaults to 45000.
+- `OPENAI_API_KEY` is used by the deployed voice agent, option research, and the inbound reply hot path. Research defaults to `gpt-5.4-mini` with no reasoning and a 30-minute cache; set `BADGER_DEFAULT_LOCATION` to the demo group's area.
+- Inbound texts use a two-second `gpt-4.1-nano` hot path (`BADGER_FAST_INBOUND_MODEL`, `BADGER_FAST_INBOUND_TIMEOUT_MS`). Every raw reply and chosen action is appended to Sail's persisted conversation, but routine reply latency no longer waits on Sail inference. STOP remains an immediate deterministic opt-out; provider timeouts fall back to the local parser.
 - `PUBLIC_BASE_URL` and the deployed agent’s `BADGER_BACKEND_URL` must be public HTTPS URLs for live callbacks.
 
 For a safe UI-only rehearsal, keep:
@@ -49,12 +51,13 @@ BADGER_DEMO_MODE=false
 PUBLIC_BASE_URL=https://your-public-backend.example
 ```
 
-With live mode on, `POST /sessions/:id/start` sends every opening message, schedules staggered calls, and keeps the Spectrum reply stream running. Sail then chooses `REQUEST_FLEXIBILITY`, `PROPOSE_PLAN`, and `COMMIT_PLAN` actions across one persisted conversation. The backend validates the selected candidate and target before executing every action. A missing live credential—including Sail—fails startup with the exact variable name instead of silently running a fake path.
+With live mode on, Badger starts real sourced research as soon as the draft is created. Starting the session rings participants immediately while research and Sail orchestration continue in parallel. All sourced options are retained, with Sail's choices ranked first. Explicit replies such as “Sunday works” take an instant deterministic path; ambiguous replies use the two-second OpenAI hot path. Every reply and action is appended to the same persisted Sail conversation, and Sail asynchronously reviews each proposal or conflict transition without delaying the call or text already in flight. The backend executes only validated, hard-veto-safe actions. A missing live credential fails startup instead of silently switching to a fake path.
 
 ## Frontend
 
 - `/` is the stage app: create → Send Badger → live coordination → proposal → 4/4 committed.
 - `/demo-control` is the operator console. Open it in a second tab of the same browser and keep it off the projector.
+- The live screen shows Sail's concise research, outreach, and decision summaries in a dedicated reasoning panel. These are public-safe rationales, never hidden chain-of-thought or raw participant constraints.
 
 The console supports two modes:
 
@@ -63,7 +66,7 @@ The console supports two modes:
 
 The operator's scripted preference injection only exists when `BADGER_DEMO_MODE=true`. Cartesia's deployed agent uses the authenticated `/internal/preferences` route in a real run.
 
-Demo participant defaults live in `src/frontend/fixtures.ts`. Candidate fixtures live in `src/backend/mocks.ts` and `src/frontend/fixtures.ts`; keep their `slot` values aligned.
+Demo participant defaults live in `src/frontend/fixtures.ts`. Rehearsal mode derives neutral windows from `src/shared/candidates.ts`; live mode replaces them with researched, sourced options while the opening calls are underway.
 
 ## Checks
 
@@ -143,7 +146,7 @@ See `VOICE_INTEGRATION.md` for the provider contracts and backend wiring.
 
 1. Start the public backend and frontend, then check `GET /health` returns `{"ok":true,"live":true}`.
 2. Open `/demo-control`, switch to **live**, create the session, and press **Send Badger**.
-3. Verify each recipient gets an iMessage, then a Cartesia call roughly 10 seconds later.
+3. Watch `Sail is researching real options…`, then verify each recipient receives the channel and timing Sail selected.
 4. Answer the calls and give constraints. The Cartesia agent posts structured preferences to the backend.
 5. Reply `YES` to the targeted flexibility question or proposal. Spectrum replies advance the real state machine.
 6. Watch the stage app reach **4/4 committed** and verify everyone receives the locked-plan message.

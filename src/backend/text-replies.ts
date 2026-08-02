@@ -53,6 +53,7 @@ export function inferPreferencesFromText(
   session: Session,
   participant: Participant,
   message: string,
+  options: { replaceAvailability?: boolean } = {},
 ): Preferences | undefined {
   const text = message.trim().toLowerCase().replaceAll('_', ' ');
   if (!text) return undefined;
@@ -67,11 +68,13 @@ export function inferPreferencesFromText(
   if (!candidates.length) return undefined;
 
   const matchedSlots = [...new Set(candidates.map((candidate) => candidate.slot))];
-  const negative = /\b(?:cannot|can't|cant|unavailable|not available|doesn't work|does not work|won't work)\b/.test(text);
+  const negative = /^(?:no|nope|nah)\b|\b(?:cannot|can't|cant|unavailable|not available|doesn't work|does not work|won't work)\b/.test(text);
   const previous = participant.preferences;
   const availability = negative
     ? [...(previous?.availability ?? [])]
-    : [...new Set([...(previous?.availability ?? []), ...matchedSlots])];
+    : options.replaceAvailability
+      ? matchedSlots
+      : [...new Set([...(previous?.availability ?? []), ...matchedSlots])];
   const hardVetoes = negative
     ? [...new Set([...(previous?.hardVetoes ?? []), ...matchedSlots])]
     : (previous?.hardVetoes ?? []).filter((slot) => !matchedSlots.includes(slot));
@@ -85,4 +88,20 @@ export function inferPreferencesFromText(
     flexibility: broad || /\bflexible\b/.test(text) ? 1 : negative || /\bonly\b/.test(text) ? 0.2 : previous?.flexibility ?? 0.7,
     summary: previous ? `${previous.summary} Follow-up: ${message.trim()}` : message.trim(),
   };
+}
+
+/** Pull the positive alternative out of replies such as "no, can we do
+ * Thursday?" so the leading rejection does not turn Thursday into a veto. */
+export function inferCounterproposalFromText(
+  session: Session,
+  participant: Participant,
+  message: string,
+): Preferences | undefined {
+  const normalized = message.trim().replace(/[?!.]+$/, '');
+  const alternative =
+    normalized.match(/\b(?:can|could)\s+we\s+(?:do|try|make)?\s*(.+)$/i)?.[1] ??
+    normalized.match(/\b(?:how|what)\s+about\s+(.+)$/i)?.[1] ??
+    normalized.match(/^(.+?)\s+instead$/i)?.[1] ??
+    normalized.replace(/^\s*(?:no|nope|nah)\s*[,—-]?\s*/i, '');
+  return inferPreferencesFromText(session, participant, alternative, { replaceAvailability: true });
 }

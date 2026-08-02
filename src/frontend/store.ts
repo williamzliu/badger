@@ -3,7 +3,7 @@ import type { Candidate, Session } from '../shared/types';
 
 export type Mode = 'mock' | 'live';
 export type UIPhase = 'create' | 'live' | 'proposal' | 'committed' | 'cancelled';
-export type FeedKind = 'info' | 'sms' | 'call' | 'conflict' | 'success';
+export type FeedKind = 'info' | 'sms' | 'call' | 'conflict' | 'success' | 'sail';
 
 export interface FeedItem {
   id: string;
@@ -30,6 +30,7 @@ export interface BadgerSnapshot {
   phase: UIPhase;
   launching: boolean;
   feed: FeedItem[];
+  sailThoughts: FeedItem[];
   conflictActive: boolean;
   followUpName: string | null;
   selectedCandidate: Candidate | null;
@@ -40,12 +41,17 @@ export interface BadgerSnapshot {
 }
 
 const FEED_LIMIT = 200;
+// SSE reconnects and synchronous workflow transitions can deliver several
+// genuine milestones in one browser task. Reveal that burst sequentially so
+// the operator can follow the work instead of seeing only the final snapshot.
+const EVENT_REVEAL_MS = 320;
 
 export function feedKindFor(type: string): FeedKind {
+  if (type === 'sail.reasoning') return 'sail';
   if (type.startsWith('sms.') || type.startsWith('message.')) return 'sms';
   if (type.startsWith('call.')) return 'call';
-  if (['conflict.detected', 'flexibility.requested', 'participant.declined', 'session.cancelled', 'integration.failed', 'proposal.rejected', 'matching.failed'].includes(type)) return 'conflict';
-  if (['conflict.resolved', 'preferences.received', 'proposal.confirmed', 'plan.proposed', 'plan.committed'].includes(type)) return 'success';
+  if (['conflict.detected', 'conflict.strategy_selected', 'flexibility.requested', 'participant.declined', 'session.cancelled', 'integration.failed', 'proposal.rejected', 'matching.failed'].includes(type)) return 'conflict';
+  if (['research.completed', 'conflict.resolved', 'preferences.received', 'proposal.confirmed', 'plan.proposed', 'plan.committed'].includes(type)) return 'success';
   return 'info';
 }
 
@@ -68,12 +74,15 @@ function storedMode(): Mode {
 class BadgerStore {
   private listeners = new Set<() => void>();
   private seenEventIds = new Set<string>();
+  private pendingEvents: PublicEventLike[] = [];
+  private eventRevealTimer: ReturnType<typeof setTimeout> | null = null;
   private snapshot: BadgerSnapshot = {
     mode: storedMode(),
     session: null,
     phase: 'create',
     launching: false,
     feed: [],
+    sailThoughts: [],
     conflictActive: false,
     followUpName: null,
     selectedCandidate: null,
@@ -119,13 +128,29 @@ class BadgerStore {
     if (!event?.id || this.seenEventIds.has(event.id)) return;
     this.seenEventIds.add(event.id);
     if (!event.publicMessage) return;
+    this.pendingEvents.push(event);
+    this.revealNextEvent();
+  }
+
+  private revealNextEvent() {
+    if (this.eventRevealTimer !== null) return;
+    const event = this.pendingEvents.shift();
+    if (!event) return;
     const item: FeedItem = {
       id: event.id,
       timestamp: event.timestamp,
       message: event.publicMessage,
       kind: feedKindFor(event.type),
     };
-    this.emit({ feed: [item, ...this.snapshot.feed].slice(0, FEED_LIMIT) });
+    if (item.kind === 'sail') {
+      this.emit({ sailThoughts: [item, ...this.snapshot.sailThoughts].slice(0, 4) });
+    } else {
+      this.emit({ feed: [item, ...this.snapshot.feed].slice(0, FEED_LIMIT) });
+    }
+    this.eventRevealTimer = setTimeout(() => {
+      this.eventRevealTimer = null;
+      this.revealNextEvent();
+    }, EVENT_REVEAL_MS);
   }
 
   setLaunching(launching: boolean) {
@@ -141,12 +166,16 @@ class BadgerStore {
   }
 
   reset() {
+    if (this.eventRevealTimer !== null) clearTimeout(this.eventRevealTimer);
+    this.eventRevealTimer = null;
+    this.pendingEvents = [];
     this.seenEventIds.clear();
     this.emit({
       session: null,
       phase: 'create',
       launching: false,
       feed: [],
+      sailThoughts: [],
       conflictActive: false,
       followUpName: null,
       selectedCandidate: null,

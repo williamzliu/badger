@@ -2,20 +2,47 @@ import { type Candidate, type Participant, type Preferences, type Session } from
 import { EventLog } from './events.js';
 import { SessionStore } from './sessions.js';
 
-function matchesSlot(constraint: string, slot: string): boolean {
+export function matchesSlot(constraint: string, slot: string): boolean {
   const normalized = constraint.toLowerCase().replaceAll(' ', '_');
-  if (['all_day', 'any_time', 'anytime', 'all_times'].includes(normalized)) return true;
-  if (normalized === slot) return true;
   const day = slot.split('_')[0];
-  return normalized === day || normalized === `${day}_all_day`;
+  if (normalized === `${day}_anytime` || normalized === `anytime_${day}`) return true;
+  if (/^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)_anytime$/.test(normalized)) return false;
+  if (
+    ['all_day', 'any_time', 'anytime', 'all_times'].includes(normalized) ||
+    normalized.includes('any_time') ||
+    normalized.includes('anytime')
+  ) {
+    if (normalized.includes('weekend')) return /^(?:saturday|sunday)_/.test(slot);
+    return true;
+  }
+  if (normalized === slot) return true;
+  if (normalized === day || normalized === `${day}_all_day`) return true;
+  const namesDayWithoutPeriod =
+    normalized.includes(day!) &&
+    !/(?:morning|afternoon|evening|night|after|before|\d)/.test(normalized);
+  if (namesDayWithoutPeriod) return true;
+  if (slot === `${day}_evening` && new RegExp(`^${day}_(?:night|after_(?:5|6|7|8|9|10|11|12))`).test(normalized)) {
+    return true;
+  }
+  return false;
 }
 
-function isCandidateFeasible(candidate: Candidate, participant: Participant): boolean {
+export function matchesCandidateConstraint(constraint: string, candidate: Candidate): boolean {
+  const normalized = constraint.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  if (normalized.startsWith('outside_')) {
+    const allowed = normalized.slice('outside_'.length).split('_').filter((token) => token.length > 2);
+    const location = `${candidate.location} ${candidate.theater}`.toLowerCase();
+    return allowed.length > 0 && !allowed.every((token) => location.includes(token));
+  }
+  return matchesSlot(normalized, candidate.slot);
+}
+
+export function isCandidateFeasible(candidate: Candidate, participant: Participant): boolean {
   const preferences = participant.preferences;
   return Boolean(
     preferences &&
     preferences.availability.some((window) => matchesSlot(window, candidate.slot)) &&
-    !preferences.hardVetoes.some((window) => matchesSlot(window, candidate.slot)),
+    !preferences.hardVetoes.some((window) => matchesCandidateConstraint(window, candidate)),
   );
 }
 
@@ -56,9 +83,9 @@ export class BadgerWorkflow {
     this.sessions.updateParticipant(participant);
   }
 
-  markCallFinished(session: Session, participant: Participant): void {
+  markCallFinished(session: Session, participant: Participant, restoreFollowUp = false): void {
     if (!['CALLING', 'IN_CALL'].includes(participant.status)) return;
-    participant.status = 'TEXTED';
+    participant.status = restoreFollowUp ? 'NEEDS_FOLLOWUP' : 'TEXTED';
     this.sessions.updateParticipant(participant);
   }
 
@@ -66,6 +93,9 @@ export class BadgerWorkflow {
     if (!['COLLECTING', 'RESOLVING'].includes(session.status)) {
       throw new Error('Preferences are not being collected');
     }
+    const priorAsk = participant.status === 'NEEDS_FOLLOWUP'
+      ? { participantId: participant.id, candidateId: session.selectedCandidateId }
+      : undefined;
     participant.preferences = preferences;
     participant.status = 'RESPONDED';
     this.sessions.updateParticipant(participant);
@@ -73,7 +103,7 @@ export class BadgerWorkflow {
       participantId: participant.id,
       preferences,
     });
-    this.evaluate(session);
+    this.evaluate(session, priorAsk);
     return session;
   }
 
@@ -119,7 +149,49 @@ export class BadgerWorkflow {
     return session;
   }
 
-  rejectCandidate(session: Session, participant: Participant): Session {
+  applyPlannerDecision(
+    session: Session,
+    decision: { action: string; candidateId: string; participantId: string | null },
+  ): Session {
+    const candidate = session.candidates.find((item) => item.id === decision.candidateId);
+    if (!candidate) throw new Error('Planner candidate not found');
+    if (session.status === 'PROPOSING' && decision.action === 'PROPOSE_PLAN') {
+      if (session.selectedCandidateId !== candidate.id) {
+        session.selectedCandidateId = candidate.id;
+        this.sessions.updateSession(session);
+        this.events.append(session.id, 'plan.replanned', `Sail selected ${candidate.time} at ${candidate.theater}`, {
+          candidateId: candidate.id,
+        });
+      }
+      return session;
+    }
+    if (session.status === 'RESOLVING' && decision.action === 'REQUEST_FLEXIBILITY') {
+      const target = session.participants.find((participant) => participant.id === decision.participantId);
+      if (!target) throw new Error('Planner flexibility target not found');
+      const previousTarget = session.participants.find((participant) => participant.status === 'NEEDS_FOLLOWUP');
+      if (previousTarget?.id !== target.id) {
+        if (previousTarget) {
+          previousTarget.status = 'RESPONDED';
+          this.sessions.updateParticipant(previousTarget);
+        }
+        target.status = 'NEEDS_FOLLOWUP';
+        this.sessions.updateParticipant(target);
+      }
+      if (session.selectedCandidateId !== candidate.id || previousTarget?.id !== target.id) {
+        session.selectedCandidateId = candidate.id;
+        this.sessions.updateSession(session);
+        this.events.append(session.id, 'conflict.strategy_selected', `Sail chose to ask ${target.name}`, {
+          participantId: target.id,
+          candidateId: candidate.id,
+        });
+      }
+      return session;
+    }
+    if (session.status === 'COMMITTED' && decision.action === 'COMMIT_PLAN') return session;
+    throw new Error(`Planner action ${decision.action} cannot be applied while session is ${session.status}`);
+  }
+
+  rejectCandidate(session: Session, participant: Participant, replacement?: Preferences): Session {
     const canReject =
       (session.status === 'PROPOSING' && ['PROPOSED', 'CONFIRMED'].includes(participant.status)) ||
       (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP');
@@ -141,11 +213,12 @@ export class BadgerWorkflow {
       participantId: participant.id,
       candidateId: candidate.id,
     });
+    const next = replacement ?? participant.preferences;
     return this.recordPreferences(session, participant, {
-      ...participant.preferences,
-      availability: participant.preferences.availability.filter((slot) => slot !== candidate.slot),
-      hardVetoes: [...new Set([...participant.preferences.hardVetoes, candidate.slot])],
-      summary: `${participant.preferences.summary} Cannot make ${candidate.time}.`,
+      ...next,
+      availability: next.availability.filter((slot) => slot !== candidate.slot),
+      hardVetoes: [...new Set([...next.hardVetoes, candidate.slot])],
+      summary: `${next.summary} Cannot make ${candidate.time}.`,
     });
   }
 
@@ -167,7 +240,10 @@ export class BadgerWorkflow {
     return session;
   }
 
-  private evaluate(session: Session): void {
+  private evaluate(
+    session: Session,
+    priorAsk?: { participantId: string; candidateId: string | undefined },
+  ): void {
     const required = session.participants.filter((item) => item.required);
     if (!required.length || !required.every((item) => item.preferences)) return;
 
@@ -177,7 +253,7 @@ export class BadgerWorkflow {
 
     const eligible = session.candidates.filter((candidate) =>
       required.every((participant) => !participant.preferences?.hardVetoes.some(
-        (window) => matchesSlot(window, candidate.slot),
+        (window) => matchesCandidateConstraint(window, candidate),
       )));
     const viable = eligible.filter((candidate) =>
       required.every((participant) => isCandidateFeasible(candidate, participant)),
@@ -196,20 +272,35 @@ export class BadgerWorkflow {
       .sort((a, b) => b.feasible - a.feasible);
     const best = ranked[0];
     if (!best || !best.blockers.length) {
-      // Every option is vetoed — end gracefully. Throwing here used to leave
-      // the session persisted in MATCHING with no legal transition out
-      // (dashboard stuck on "Checking viable options…" forever).
-      session.status = 'CANCELLED';
+      // The researched set is exhausted, not the group. Ask the participant
+      // with the most room to maneuver for a wider window instead of falsely
+      // declaring that the entire plan is off.
+      for (const member of required) {
+        if (member.status === 'NEEDS_FOLLOWUP') {
+          member.status = 'RESPONDED';
+          this.sessions.updateParticipant(member);
+        }
+      }
+      const target = [...required].sort(
+        (a, b) => (b.preferences?.flexibility ?? 0) - (a.preferences?.flexibility ?? 0),
+      )[0]!;
+      target.status = 'NEEDS_FOLLOWUP';
+      this.sessions.updateParticipant(target);
+      session.selectedCandidateId = undefined;
+      session.status = 'RESOLVING';
       this.sessions.updateSession(session);
-      this.events.append(session.id, 'matching.failed', 'No option works for everyone', {});
-      this.events.append(session.id, 'session.cancelled', 'No time works for everyone');
+      this.events.append(session.id, 'conflict.detected', 'The current options need a wider search', {});
+      this.events.append(session.id, 'flexibility.requested', `Asking ${target.name} for another workable window`, {
+        participantId: target.id,
+      });
       return;
     }
 
     // Capture the outstanding ask before clearing, so an unchanged
     // target+candidate doesn't re-emit conflict events on every evaluate.
-    const previousTargetId = session.participants.find((m) => m.status === 'NEEDS_FOLLOWUP')?.id;
-    const previousCandidateId = session.selectedCandidateId;
+    const previousTargetId = priorAsk?.participantId ??
+      session.participants.find((m) => m.status === 'NEEDS_FOLLOWUP')?.id;
+    const previousCandidateId = priorAsk?.candidateId ?? session.selectedCandidateId;
 
     // Clear any stale follow-up target from a previous resolution round so
     // exactly one participant is ever NEEDS_FOLLOWUP.

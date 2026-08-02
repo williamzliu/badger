@@ -1,4 +1,6 @@
 import { useBadger } from '../store';
+import { discardDraft } from '../actions';
+import { formatCandidateLabel, formatCandidateTime } from '../../shared/display';
 
 export default function CommitScreen() {
   const snap = useBadger();
@@ -17,12 +19,15 @@ export default function CommitScreen() {
       </h1>
       {plan && (
         <div className="commit-plan">
-          {[plan.time, plan.theater, plan.format !== 'Activity' ? plan.format : null]
+          {[formatCandidateTime(plan.time), plan.theater, plan.format !== 'Activity' ? formatCandidateLabel(plan.format) : null]
             .filter(Boolean)
             .join(' · ')}
         </div>
       )}
       <div className="commit-sub smallcaps">Confirmation texts are on their way</div>
+      <button className="btn-line commit-home" type="button" onClick={discardDraft}>
+        Start another Badger
+      </button>
       <div className="commit-tagline">
         You don't ask the group. You send <b>Badger</b>.
       </div>

@@ -8,11 +8,14 @@ import {
 import {
   SpectrumMessagingClient,
   classifyInboundMessage,
+  displayCandidateTime,
+  isNaturalConfirmation,
   sendBadgerMessage,
   type SpectrumInboundMessage,
   type SpectrumTransportFactory,
 } from "../src/voice/spectrum.js";
 import type { BadgerEvent, CallMetadata } from "../src/shared/types.js";
+import { formatCandidateLabel, formatCandidateTime } from "../src/shared/display.js";
 
 const metadata: CallMetadata = {
   sessionId: "session_123",
@@ -21,6 +24,13 @@ const metadata: CallMetadata = {
   hostName: "Kaustubh",
   goal: "See The Odyssey this weekend",
 };
+
+test("candidate timestamps are rendered as natural scheduling copy", () => {
+  assert.equal(displayCandidateTime("2026-08-02 3:00 PM"), "Sunday, Aug 2 at 3 PM");
+  assert.equal(formatCandidateTime("2026-08-02 18:00"), "Sunday, Aug 2 at 6 PM");
+  assert.doesNotMatch(formatCandidateTime("2026-08-02T12:33:26.310Z"), /T|Z/);
+  assert.equal(formatCandidateLabel("arrive_and_drive"), "Arrive & drive");
+});
 
 test("Cartesia call uses the current API contract and emits call.requested", async () => {
   let request: { url: string; init: RequestInit | undefined } | undefined;
@@ -277,5 +287,10 @@ test("Spectrum replies are correlated and normalized", async () => {
   assert.equal(classifyInboundMessage(" stop "), "opt_out");
   assert.equal(classifyInboundMessage("I can’t make that"), "decline");
   assert.equal(classifyInboundMessage("that doesn't work for me"), "decline");
+  assert.equal(classifyInboundMessage("no it doesn't"), "decline");
   assert.equal(classifyInboundMessage("That works for me"), "confirm");
+  assert.equal(classifyInboundMessage("I'm down"), "confirm");
+  assert.equal(classifyInboundMessage("bet"), "confirm");
+  assert.equal(classifyInboundMessage("Friday works"), "freeform");
+  assert.equal(isNaturalConfirmation("Friday works"), true);
 });

@@ -48,6 +48,9 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
     }
     const session = sessions.create(input);
     events.append(session.id, 'session.created', 'Badger created');
+    if (communications?.prewarm) void communications.prewarm(session).catch((error) => {
+      console.error('[badger.integration] research prewarm failed', error);
+    });
     return reply.code(201).send(session);
   });
 
@@ -76,8 +79,12 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
     try {
       workflow.start(session);
       const fresh = sessions.get(session.id)!;
-      await communications?.contact(fresh);
-      return sessions.get(session.id);
+      // Research can involve two Sail turns plus a sourced web search. Return
+      // the live session immediately so the UI can stream that progress.
+      if (communications) void communications.contact(fresh).catch((error) => {
+        console.error('[badger.integration] coordination launch failed', error);
+      });
+      return fresh;
     } catch (error) {
       return reply.code(400).send({ error: (error as Error).message });
     }
@@ -138,8 +145,12 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
       const previousStatus = session.status;
       workflow.recordPreferences(session, participant, body);
       const fresh = sessions.get(session.id)!;
-      await communications?.afterPreferences(fresh, previousStatus);
-      return sessions.get(session.id);
+      // A Cartesia loopback tool is waiting on this HTTP response. Persist the
+      // answer first, then let research/Sail/outbound work continue off-path.
+      if (communications) void communications.afterPreferences(fresh, previousStatus).catch((error) => {
+        console.error('[badger.integration] post-preferences coordination failed', error);
+      });
+      return fresh;
     } catch (error) {
       return reply.code(400).send({ error: (error as Error).message });
     }
@@ -172,8 +183,12 @@ export function createServer(databasePath = ':memory:', options: ServerOptions =
         if (action === 'confirm') workflow.confirm(session, participant);
         else workflow.decline(session, participant);
         const fresh = sessions.get(session.id)!;
-        if (action === 'confirm') await communications?.afterConfirmation(fresh, previousStatus);
-        return sessions.get(session.id);
+        if (action === 'confirm' && communications) {
+          void communications.afterConfirmation(fresh, previousStatus).catch((error) => {
+            console.error('[badger.integration] post-confirmation coordination failed', error);
+          });
+        }
+        return fresh;
       } catch (error) {
         return reply.code(400).send({ error: (error as Error).message });
       }

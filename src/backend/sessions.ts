@@ -11,7 +11,7 @@ import {
   type Session,
   type SessionStatus,
 } from '../shared/types.js';
-import { candidatesForGoal } from './mocks.js';
+import { candidatesForGoal } from '../shared/candidates.js';
 type SessionRow = {
   id: string;
   host_name: string;
@@ -102,6 +102,42 @@ export class SessionStore {
       participants,
       candidates,
     };
+  }
+
+  listActive(): Session[] {
+    const rows = this.db.prepare(`
+      SELECT id FROM sessions
+      WHERE status NOT IN ('DRAFT', 'COMMITTED', 'CANCELLED')
+      ORDER BY updated_at DESC
+    `).all() as Array<{ id: string }>;
+    return rows.map((row) => this.get(row.id)).filter((session): session is Session => Boolean(session));
+  }
+
+  replaceCandidates(sessionId: string, candidates: Candidate[]): Session {
+    const session = this.get(sessionId);
+    if (!session) throw new Error('Session not found');
+    if (!['DRAFT', 'CONTACTING', 'COLLECTING', 'MATCHING', 'RESOLVING'].includes(session.status)) {
+      throw new Error(`Candidates cannot change while session is ${session.status}`);
+    }
+    if (candidates.length < 2) throw new Error('At least two researched candidates are required');
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM candidates WHERE session_id=?').run(sessionId);
+      const insert = this.db.prepare('INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      for (const candidate of candidates) {
+        insert.run(
+          candidate.id || randomUUID(),
+          sessionId,
+          candidate.theater,
+          candidate.time,
+          candidate.slot,
+          candidate.format,
+          candidate.price,
+          candidate.location,
+        );
+      }
+      this.touch(sessionId);
+    })();
+    return this.get(sessionId)!;
   }
 
   addParticipant(session: Session, input: AddParticipantInput): Participant {
@@ -199,6 +235,12 @@ export class SessionStore {
       VALUES (?, ?, ?)
       ON CONFLICT(session_id) DO UPDATE SET history_json=excluded.history_json, updated_at=excluded.updated_at
     `).run(sessionId, JSON.stringify(history), new Date().toISOString());
+  }
+
+  appendSailHistory(sessionId: string, items: Record<string, unknown>[]): void {
+    if (!items.length) return;
+    const history = this.getSailHistory(sessionId);
+    this.saveSailHistory(sessionId, [...history, ...items]);
   }
 
   receiveWebhook(provider: string, id: string): boolean {

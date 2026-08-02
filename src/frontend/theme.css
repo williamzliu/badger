@@ -201,6 +201,11 @@ input:focus-visible {
   gap: 12px;
 }
 
+.masthead.kicker-right .kicker {
+  margin-left: auto;
+  text-align: right;
+}
+
 /* ── Motion ───────────────────────────────────────────────────────── */
 @keyframes pulse-dot {
   50% {

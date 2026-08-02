@@ -34,7 +34,6 @@ export function buildScenario(session: Session): Step[] {
       s.status = 'CONTACTING';
     },
   });
-
   people.forEach((person, i) => {
     steps.push({
       delay: i === 0 ? 900 : 420,
@@ -125,7 +124,7 @@ export function buildScenario(session: Session): Step[] {
   steps.push({
     delay: 1100,
     type: 'matching.started',
-    message: () => 'Checking viable showtimes…',
+    message: () => 'Checking viable options…',
     apply: (s) => {
       s.status = 'MATCHING';
     },

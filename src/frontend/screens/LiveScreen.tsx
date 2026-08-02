@@ -1,6 +1,7 @@
 import type { Participant, ParticipantStatus } from '../../shared/types';
 import { useBadger, type BadgerSnapshot, type FeedItem } from '../store';
 import { restartSession } from '../actions';
+import RotatingStatus from '../components/RotatingStatus';
 import Masthead from '../components/Masthead';
 
 const STATUS_TEXT: Record<ParticipantStatus, string> = {
@@ -132,9 +133,44 @@ export default function LiveScreen() {
           </table>
         </div>
         <div className="live-right">
+          <section className="sail-trace" aria-live="polite">
+            <div className="sail-trace-head smallcaps">
+              <span className="sail-mark">S</span>
+              Sail reasoning
+              <span className="livedot" />
+            </div>
+            {snap.sailThoughts.length ? (
+              <div className="sail-thoughts">
+                {snap.sailThoughts.map((thought, index) => (
+                  <div className={`sail-thought${index === 0 ? ' is-current' : ''}`} key={thought.id}>
+                    {thought.message}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <RotatingStatus
+                className="sail-thought is-current"
+                intervalMs={1_600}
+                phrases={[
+                  'Cross-referencing everyone’s excuses…',
+                  'Interrogating “I’m free whenever”…',
+                  'Looking for a time nobody can complain about…',
+                  'Deciding who seems easiest to bother…',
+                  'Preparing a diplomatic inconvenience…',
+                ]}
+              />
+            )}
+          </section>
           <div className="feed-list">
             {snap.feed.length === 0 ? (
-              <div className="feed-empty">Waiting for Badger…</div>
+              <RotatingStatus
+                className="feed-empty"
+                phrases={[
+                  'Badger is bothering people now…',
+                  'Making “we should hang” legally binding…',
+                  'Turning friendship into a scheduling problem…',
+                ]}
+              />
             ) : (
               snap.feed.map((item, i) => <FeedRow key={item.id} item={item} lead={i === 0} />)
             )}
