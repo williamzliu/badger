@@ -1,47 +1,76 @@
 import type { Participant, ParticipantStatus } from '../../shared/types';
-import { useBadger, type FeedItem, type FeedKind } from '../store';
+import { useBadger, type BadgerSnapshot, type FeedItem } from '../store';
+import Masthead from '../components/Masthead';
 
-const STATUS_LABEL: Record<ParticipantStatus, { text: string; tone: string; icon: string }> = {
-  PENDING: { text: 'Waiting…', tone: 'st-muted', icon: '·' },
-  TEXTED: { text: 'Texted', tone: 'st-muted', icon: '✉' },
-  CALLING: { text: 'Ringing…', tone: 'st-call', icon: '●' },
-  IN_CALL: { text: 'In call', tone: 'st-call', icon: '●' },
-  RESPONDED: { text: 'Availability received', tone: 'st-ok', icon: '✓' },
-  NEEDS_FOLLOWUP: { text: 'Following up…', tone: 'st-accent', icon: '●' },
-  PROPOSED: { text: 'Reviewing the plan…', tone: 'st-accent', icon: '●' },
-  CONFIRMED: { text: 'Confirmed', tone: 'st-ok', icon: '✓' },
-  DECLINED: { text: 'Declined', tone: 'st-danger', icon: '✕' },
+const STATUS_TEXT: Record<ParticipantStatus, string> = {
+  PENDING: 'Waiting',
+  TEXTED: 'Texted',
+  CALLING: 'On the phone',
+  IN_CALL: 'On the phone',
+  RESPONDED: 'Responded',
+  NEEDS_FOLLOWUP: 'Following up',
+  PROPOSED: 'Reviewing plan',
+  CONFIRMED: 'Confirmed',
+  DECLINED: 'Declined',
 };
 
-const FEED_ICON: Record<FeedKind, string> = {
-  info: '·',
-  sms: '✉',
-  call: '☎',
-  conflict: '!',
-  success: '✓',
-};
+const ACTIVE: ParticipantStatus[] = ['CALLING', 'IN_CALL', 'NEEDS_FOLLOWUP'];
+const DONE: ParticipantStatus[] = ['RESPONDED', 'CONFIRMED'];
 
-function cardClass(p: Participant): string {
-  if (p.status === 'CALLING' || p.status === 'IN_CALL') return 'p-card card is-active';
-  if (p.status === 'NEEDS_FOLLOWUP') return 'p-card card is-followup';
-  if (p.status === 'RESPONDED' || p.status === 'CONFIRMED') return 'p-card card is-done';
-  return 'p-card card';
+function statusClass(status: ParticipantStatus): string {
+  if (status === 'NEEDS_FOLLOWUP') return 'roster-status smallcaps is-hot';
+  if (status === 'DECLINED') return 'roster-status smallcaps is-declined';
+  if (DONE.includes(status)) return 'roster-status smallcaps is-done';
+  return 'roster-status smallcaps';
 }
 
-function ParticipantCard({ participant }: { participant: Participant }) {
-  const status = STATUS_LABEL[participant.status] ?? STATUS_LABEL.PENDING;
+function RosterRow({ participant }: { participant: Participant }) {
   return (
-    <div className={cardClass(participant)}>
-      <div className="avatar">{participant.name.charAt(0).toUpperCase()}</div>
-      <div className="p-info">
-        <div className="p-name">{participant.name}</div>
-        <div className={`p-status ${status.tone}`}>
-          <span className="dot" />
-          {status.text}
-        </div>
-      </div>
-    </div>
+    <tr>
+      <td className="roster-name">{participant.name}</td>
+      <td className={statusClass(participant.status)}>
+        {ACTIVE.includes(participant.status) && <span className="livedot" />}
+        {STATUS_TEXT[participant.status] ?? participant.status}
+      </td>
+    </tr>
   );
+}
+
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+function spell(n: number): string {
+  return NUMBER_WORDS[n] ?? String(n);
+}
+
+/** The narrative headline — the screen tells the story of this moment. */
+function narrative(snap: BadgerSnapshot): { headline: string; sub: string } {
+  const session = snap.session;
+  const n = spell(snap.totalCount);
+  if (snap.phase === 'cancelled') {
+    return { headline: 'This plan is off.', sub: 'A required participant declined.' };
+  }
+  if (snap.conflictActive) {
+    return {
+      headline: `One conflict stands between ${n} people and a plan.`,
+      sub: snap.followUpName
+        ? `Badger is asking ${snap.followUpName} about flexibility.`
+        : 'Badger is resolving it.',
+    };
+  }
+  switch (session?.status) {
+    case 'CONTACTING':
+      return { headline: `Badger is reaching ${n} people.`, sub: 'Texts first. Calls follow.' };
+    case 'MATCHING':
+      return {
+        headline: 'Cross-checking every showtime.',
+        sub: 'Hard constraints are non-negotiable.',
+      };
+    default:
+      return {
+        headline: 'Badger is on the phones.',
+        sub: `${snap.respondedCount} of ${snap.totalCount} availabilities in — nobody had to chase anyone.`,
+      };
+  }
 }
 
 function time(iso: string): string {
@@ -51,11 +80,11 @@ function time(iso: string): string {
     : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 }
 
-function FeedRow({ item }: { item: FeedItem }) {
+function FeedRow({ item, lead }: { item: FeedItem; lead: boolean }) {
+  const kindClass = item.kind === 'conflict' ? ' k-conflict' : item.kind === 'success' ? ' k-success' : '';
   return (
-    <div className={`feed-item feed-${item.kind}`}>
+    <div className={`feed-item${lead ? ' is-lead' : ''}${kindClass}`}>
       <span className="feed-time">{time(item.timestamp)}</span>
-      <span className="feed-icon">{FEED_ICON[item.kind]}</span>
       <span className="feed-msg">{item.message}</span>
     </div>
   );
@@ -65,52 +94,43 @@ export default function LiveScreen() {
   const snap = useBadger();
   const session = snap.session;
   if (!session) return null;
+  const story = narrative(snap);
 
   return (
-    <div className="live">
-      <div className="live-top">
-        <div>
-          <span className="wordmark">
-            🦡 <b>BADGER</b>
-          </span>
-          <div className="live-goal">
-            {session.goal} · for {session.hostName}
-          </div>
-        </div>
-        <div className="live-stat">
-          <b>
-            {snap.respondedCount}/{snap.totalCount}
-          </b>
-          <span>availability received</span>
-        </div>
+    <div className="page" style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <Masthead
+        kicker={`${session.goal} · for ${session.hostName}`}
+        live={`Live ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}
+      />
+      <div className="live-head">
+        <h1 className="live-headline">{story.headline}</h1>
+        <div className="live-sub">{story.sub}</div>
       </div>
-
-      {snap.phase === 'cancelled' && (
-        <div className="conflict-banner">✕ A required participant declined — this Badger is off.</div>
-      )}
-      {snap.conflictActive && (
-        <div className="conflict-banner">
-          ! One availability conflict detected
-          {snap.followUpName ? ` — following up with ${snap.followUpName}` : ''}
-        </div>
-      )}
-
-      <div className="live-grid">
-        <div className="cards-col">
-          {session.participants.map((p) => (
-            <ParticipantCard key={p.id} participant={p} />
-          ))}
-        </div>
-        <div className="feed card">
-          <div className="feed-title">
-            <span className="dot" />
-            Badger activity
+      <div className="live-grid" style={{ flex: 1 }}>
+        <div className="live-left">
+          <div className="stat">
+            <span className="stat-n">
+              {snap.respondedCount}
+              <span>/{snap.totalCount}</span>
+            </span>
+            <span className="stat-cap">
+              availability received{snap.followUpName ? ', one follow-up out' : ''}
+            </span>
           </div>
+          <table className="roster">
+            <tbody>
+              {session.participants.map((p) => (
+                <RosterRow key={p.id} participant={p} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="live-right">
           <div className="feed-list">
             {snap.feed.length === 0 ? (
               <div className="feed-empty">Waiting for Badger…</div>
             ) : (
-              snap.feed.map((item) => <FeedRow key={item.id} item={item} />)
+              snap.feed.map((item, i) => <FeedRow key={item.id} item={item} lead={i === 0} />)
             )}
           </div>
         </div>

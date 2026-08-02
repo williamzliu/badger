@@ -8,36 +8,34 @@ export default function ProposalScreen() {
 
   return (
     <div className="proposal">
-      <span className="eyebrow">Badger's plan</span>
-      <div className="plan-card card">
-        {plan ? (
-          <>
-            <div className="plan-time">{plan.time}</div>
-            <div className="plan-venue">
-              {plan.theater} · {plan.format}
-            </div>
-            <div className="plan-meta">
-              {plan.location} · ${plan.price} per ticket
-            </div>
-          </>
-        ) : (
-          <div className="plan-time">{snap.feed[0]?.message ?? 'Finalizing…'}</div>
-        )}
-      </div>
+      <span className="kicker">Badger's plan</span>
+      {plan ? (
+        <>
+          <h1 className="plan-time">{plan.time}</h1>
+          <div className="plan-venue">
+            {plan.theater} · {plan.format} · ${plan.price}
+          </div>
+        </>
+      ) : (
+        <h1 className="plan-time">{snap.feed[0]?.message ?? 'Finalizing…'}</h1>
+      )}
 
-      <div className="confirm-list">
+      <div className="confirm-table">
         {session.participants.map((p, i) => {
           const confirmed = p.status === 'CONFIRMED';
           const declined = p.status === 'DECLINED';
           return (
-            <div className="confirm-row card" key={p.id} style={{ animationDelay: `${i * 90}ms` }}>
-              <span className="p-name">{p.name}</span>
+            <div className="confirm-row" key={p.id} style={{ animationDelay: `${i * 90}ms` }}>
+              <span className="roster-name">{p.name}</span>
               {confirmed ? (
-                <span className="pill pill-ok">✓ Confirmed</span>
+                <span className="roster-status smallcaps is-done">Confirmed</span>
               ) : declined ? (
-                <span className="pill pill-danger">✕ Declined</span>
+                <span className="roster-status smallcaps is-declined">Declined</span>
               ) : (
-                <span className="pill pill-accent">Confirming…</span>
+                <span className="roster-status smallcaps is-hot">
+                  <span className="livedot" />
+                  Confirming
+                </span>
               )}
             </div>
           );

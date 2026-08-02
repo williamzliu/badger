@@ -31,49 +31,48 @@ export default function DemoControl() {
 
   return (
     <div className="console">
-      <h1>🦡 Badger demo console</h1>
+      <div className="console-mast">
+        <h1>Badger — operator console</h1>
+        <span className="kicker">never on the projector</span>
+      </div>
       <p className="console-sub">
-        Drives the main window over a BroadcastChannel. Keep this on the operator laptop, never the
-        projector.
+        Drives the main window over a BroadcastChannel. Open the app (/) in another tab of this
+        browser.
       </p>
 
-      {!connected && (
-        <div className="console-warn">
-          No app window detected — open the main app (/) in another tab of this browser.
-        </div>
-      )}
+      {!connected && <div className="console-warn">No app window detected — open / first.</div>}
 
       {state && (
         <div className="console-status">
-          <span className={`pill ${state.mode === 'mock' ? 'pill-accent' : 'pill-ok'}`}>
+          <span className={`chip ${state.mode === 'mock' ? '' : 'is-ink'}`}>
             {state.mode === 'mock' ? 'rehearsal (mock)' : 'live backend'}
           </span>
-          <span className="pill pill-muted">phase: {state.phase}</span>
+          <span className="chip">phase: {state.phase}</span>
           {state.mode === 'mock' && (
-            <span className="pill pill-muted">
+            <span className="chip">
               {state.playing ? '▶ playing' : '⏸ paused'} · step {state.stepIndex}/
               {state.totalSteps || '—'}
               {state.nextCheckpoint ? ` · next: ${state.nextCheckpoint}` : ''}
             </span>
           )}
-          {state.conflictActive && <span className="pill pill-danger">conflict active</span>}
+          {state.conflictActive && <span className="chip is-hot">conflict active</span>}
         </div>
       )}
 
-      <div className="console-section card">
-        <h2>Session</h2>
+      <div className="console-section">
+        <h2 className="kicker">Session</h2>
         <div className="console-row">
-          <button className="btn btn-primary" onClick={() => send({ cmd: 'load-demo' })}>
+          <button className="btn-ink" onClick={() => send({ cmd: 'load-demo' })}>
             Load demo scenario
           </button>
-          <button className="btn btn-primary" onClick={() => send({ cmd: 'send-badger' })}>
+          <button className="btn-ink" onClick={() => send({ cmd: 'send-badger' })}>
             Send Badger
           </button>
-          <button className="btn btn-ghost" onClick={() => preset('restart')}>
+          <button className="btn-line" onClick={() => preset('restart')}>
             Restart session
           </button>
           <button
-            className="btn btn-ghost"
+            className="btn-line"
             onClick={() => send({ cmd: 'set-mode', mode: state?.mode === 'mock' ? 'live' : 'mock' })}
           >
             Switch to {state?.mode === 'mock' ? 'live' : 'mock'} mode
@@ -81,13 +80,13 @@ export default function DemoControl() {
         </div>
       </div>
 
-      <div className="console-section card">
-        <h2>Script control (mock mode)</h2>
+      <div className="console-section">
+        <h2 className="kicker">Script control (mock mode)</h2>
         <div className="console-row">
-          <button className="btn btn-ghost" onClick={() => send({ cmd: 'play' })}>
+          <button className="btn-line" onClick={() => send({ cmd: 'play' })}>
             ▶ Play
           </button>
-          <button className="btn btn-ghost" onClick={() => send({ cmd: 'pause' })}>
+          <button className="btn-line" onClick={() => send({ cmd: 'pause' })}>
             ⏸ Pause
           </button>
         </div>
@@ -95,7 +94,7 @@ export default function DemoControl() {
           {CHECKPOINTS.map((checkpoint: Checkpoint) => (
             <button
               key={checkpoint}
-              className="btn btn-ghost"
+              className="btn-line"
               onClick={() => send({ cmd: 'skip-to', checkpoint })}
             >
               ⇥ {checkpoint}
@@ -104,41 +103,41 @@ export default function DemoControl() {
         </div>
       </div>
 
-      <div className="console-section card">
-        <h2>Story beats</h2>
+      <div className="console-section">
+        <h2 className="kicker">Story beats</h2>
         <div className="console-row">
-          <button className="btn btn-ghost" onClick={() => preset('trigger-conflict')}>
+          <button className="btn-line" onClick={() => preset('trigger-conflict')}>
             Trigger conflict
           </button>
-          <button className="btn btn-ghost" onClick={() => preset('resolve-conflict')}>
+          <button className="btn-line" onClick={() => preset('resolve-conflict')}>
             Resolve conflict
           </button>
-          <button className="btn btn-ghost" onClick={() => preset('skip-to-final')}>
+          <button className="btn-line" onClick={() => preset('skip-to-final')}>
             Skip to final plan
           </button>
         </div>
       </div>
 
-      <div className="console-section card">
-        <h2>Participants</h2>
+      <div className="console-section">
+        <h2 className="kicker">Participants</h2>
         {(state?.participants ?? []).map((p) => (
           <div className="console-participant" key={p.id}>
             <strong>
               {p.name}
               {p.required ? '' : ' (optional)'}
             </strong>
-            <span className="pill pill-muted">{p.status}</span>
+            <span className="chip">{p.status}</span>
             <span className="console-row">
-              <button className="btn btn-ghost" onClick={() => preset('inject-preferences', p.id)}>
+              <button className="btn-line" onClick={() => preset('inject-preferences', p.id)}>
                 Inject prefs
               </button>
-              <button className="btn btn-ghost" onClick={() => preset('missed-call', p.id)}>
+              <button className="btn-line" onClick={() => preset('missed-call', p.id)}>
                 Missed call
               </button>
-              <button className="btn btn-ghost" onClick={() => preset('sms-reply', p.id)}>
+              <button className="btn-line" onClick={() => preset('sms-reply', p.id)}>
                 SMS reply
               </button>
-              <button className="btn btn-ghost" onClick={() => preset('confirm-participant', p.id)}>
+              <button className="btn-line" onClick={() => preset('confirm-participant', p.id)}>
                 Confirm
               </button>
             </span>
