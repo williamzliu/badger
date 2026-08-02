@@ -20,7 +20,9 @@ type CartesiaTurn = {
 type CartesiaWebhook = {
   type: string;
   call_id: string;
-  webhook_request_id: string;
+  delivery_id: string;
+  webhook_id?: string;
+  webhook_request_id?: string;
   timestamp?: string;
   call?: {
     metadata?: unknown;
@@ -84,12 +86,24 @@ function parseCartesiaWebhook(body: unknown): CartesiaWebhook {
   if (!isRecord(body)) throw new Error("Cartesia webhook body must be an object");
   const type = requireString(body.type, "webhook.type");
   const callId = requireString(body.call_id, "webhook.call_id");
-  const requestId = requireString(body.webhook_request_id, "webhook.webhook_request_id");
+  const requestId = typeof body.webhook_request_id === "string" && body.webhook_request_id.trim()
+    ? body.webhook_request_id.trim()
+    : undefined;
+  const webhookId = typeof body.webhook_id === "string" && body.webhook_id.trim()
+    ? body.webhook_id.trim()
+    : undefined;
+  const timestamp = typeof body.timestamp === "string" ? body.timestamp : "unknown";
+  const turnId = isRecord(body.turn) && (typeof body.turn.id === "string" || typeof body.turn.id === "number")
+    ? String(body.turn.id)
+    : "";
+  const deliveryId = requestId ?? `cartesia:${webhookId ?? "webhook"}:${callId}:${type}:${timestamp}:${turnId}`;
   return {
     ...(body as CartesiaWebhook),
     type,
     call_id: callId,
-    webhook_request_id: requestId,
+    delivery_id: deliveryId,
+    ...(requestId ? { webhook_request_id: requestId } : {}),
+    ...(webhookId ? { webhook_id: webhookId } : {}),
   };
 }
 
@@ -129,6 +143,8 @@ export type CartesiaWebhookProcessorConfig = {
   deduplicator?: WebhookDeduplicator;
   callRegistry?: CallMetadataRegistry;
   lookupMetadata?: (callId: string) => CallMetadata | undefined | Promise<CallMetadata | undefined>;
+  isDuplicateDelivery?: (deliveryId: string) => boolean | Promise<boolean>;
+  releaseDelivery?: (deliveryId: string) => void | Promise<void>;
 };
 
 export type WebhookProcessResult = { duplicate: boolean; events: BadgerEvent[] };
@@ -146,14 +162,18 @@ export class CartesiaWebhookProcessor {
   async process(secret: string | undefined, rawBody: unknown): Promise<WebhookProcessResult> {
     if (!secureEqual(secret, this.config.webhookSecret)) throw new Error("Invalid Cartesia webhook secret");
     const body = parseCartesiaWebhook(rawBody);
-    if (!this.dedupe.claim(body.webhook_request_id)) return { duplicate: true, events: [] };
+    if (!this.dedupe.claim(body.delivery_id)) return { duplicate: true, events: [] };
+    if (await this.config.isDuplicateDelivery?.(body.delivery_id)) {
+      return { duplicate: true, events: [] };
+    }
 
     try {
       return await this.processClaimed(body);
     } catch (error) {
       // Only successful processing claims an event permanently. A missing dependency or
       // transient event-store failure must remain retryable when Cartesia redelivers it.
-      this.dedupe.release(body.webhook_request_id);
+      this.dedupe.release(body.delivery_id);
+      await this.config.releaseDelivery?.(body.delivery_id);
       throw error;
     }
   }
@@ -176,7 +196,7 @@ export class CartesiaWebhookProcessor {
     };
     const events: BadgerEvent[] = [];
     const push = (event: Omit<BadgerEvent, "id">) =>
-      events.push({ id: `${body.webhook_request_id}:${events.length}`, ...event });
+      events.push({ id: `${body.delivery_id}:${events.length}`, ...event });
 
     switch (body.type) {
       case "call_ringing":

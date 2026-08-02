@@ -9,7 +9,7 @@
     "check": "tsc --noEmit",
     "test": "npm run test:backend && npm run test:voice",
     "test:foundation": "tsx src/backend/foundation.test.ts",
-    "test:backend": "tsx src/backend/foundation.test.ts && tsx src/backend/api.test.ts && tsx src/backend/workflow.test.ts && tsx src/backend/coordination.test.ts",
+    "test:backend": "tsx src/backend/foundation.test.ts && tsx src/backend/api.test.ts && tsx src/backend/workflow.test.ts && tsx src/backend/coordination.test.ts && tsx src/backend/integration.test.ts && tsx src/backend/sail.test.ts",
     "test:voice": "tsc -p tsconfig.voice.json && node --test dist/test/*.test.js",
     "spectrum:smoke": "tsc -p tsconfig.voice.json && node --env-file=.env dist/src/voice/spectrum-smoke.js",
     "dev:web": "vite",

@@ -14,4 +14,17 @@ for(const p of session.participants) workflow.recordPreferences(session,p,{avail
 assert.equal(session.status,'PROPOSING');
 assert.ok(session.selectedCandidateId);
 assert.equal(events.list(session.id).at(-1)?.type,'plan.proposed');
+
+const conflicted=store.create({hostName:'Host',goal:'Conflict demo'});
+store.addParticipant(conflicted,{name:'Flexible',phone:'+15550000003'});
+store.addParticipant(conflicted,{name:'Available',phone:'+15550000004'});
+const conflictSession=store.get(conflicted.id)!;
+workflow.start(conflictSession);
+workflow.recordPreferences(conflictSession,conflictSession.participants[0]!,{availability:['saturday_afternoon'],hardVetoes:[],preferences:['imax'],flexibility:.9,summary:'Could flex'});
+workflow.recordPreferences(conflictSession,conflictSession.participants[1]!,{availability:['friday_after_8'],hardVetoes:[],preferences:['imax'],flexibility:.1,summary:'Friday only'});
+assert.equal(conflictSession.status,'RESOLVING');
+const target=conflictSession.participants.find((participant)=>participant.status==='NEEDS_FOLLOWUP');
+assert.equal(target?.name,'Flexible');
+workflow.acceptFlexibility(conflictSession,target!);
+assert.equal(conflictSession.status,'PROPOSING');
 console.info('workflow test passed');

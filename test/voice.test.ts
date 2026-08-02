@@ -114,6 +114,25 @@ test("Cartesia completed webhook emits a structured preference result once", asy
   assert.equal(events.length, 2);
 });
 
+test("Cartesia current webhook envelope is accepted without webhook_request_id", async () => {
+  const events: BadgerEvent[] = [];
+  const processor = new CartesiaWebhookProcessor({
+    webhookSecret: "right",
+    emit: (event) => { events.push(event); },
+  });
+  const body = {
+    webhook_id: "configured_webhook_123",
+    type: "call_started",
+    call_id: "call_current",
+    timestamp: "2026-08-01T10:00:00.000Z",
+    call: { metadata },
+  };
+
+  assert.equal((await processor.process("right", body)).duplicate, false);
+  assert.equal((await processor.process("right", body)).duplicate, true);
+  assert.equal(events[0]?.type, "call.started");
+});
+
 test("Cartesia webhook rejects the wrong secret before claiming dedupe id", async () => {
   const dedupe = new WebhookDeduplicator();
   const processor = new CartesiaWebhookProcessor({

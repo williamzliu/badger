@@ -1,17 +1,196 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import { AddParticipantInput, Candidate, CreateSessionInput, Participant, ParticipantStatus, Preferences, Session, SessionStatus } from '../shared/types.js';
+import {
+  type AddParticipantInput,
+  type CallMetadata,
+  type Candidate,
+  type CreateSessionInput,
+  type Participant,
+  type ParticipantStatus,
+  type Preferences,
+  type Session,
+  type SessionStatus,
+} from '../shared/types.js';
 import { mockCandidates } from './mocks.js';
-type SessionRow = { id:string;host_name:string;goal:string;status:SessionStatus;selected_candidate_id:string|null;created_at:string;updated_at:string; };
-type ParticipantRow = { id:string;session_id:string;name:string;phone:string;required:number;status:ParticipantStatus;preferences_json:string|null; };
+type SessionRow = {
+  id: string;
+  host_name: string;
+  goal: string;
+  status: SessionStatus;
+  selected_candidate_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ParticipantRow = {
+  id: string;
+  session_id: string;
+  name: string;
+  phone: string;
+  required: number;
+  status: ParticipantStatus;
+  preferences_json: string | null;
+};
+
+function normalizeE164(phone: string): string {
+  const normalized = `+${phone.replace(/\D/g, '')}`;
+  if (!/^\+[1-9]\d{7,14}$/.test(normalized)) {
+    throw new Error('Phone must be a valid E.164 number');
+  }
+  return normalized;
+}
+
+function participantFromRow(row: ParticipantRow): Participant {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    name: row.name,
+    phone: row.phone,
+    required: Boolean(row.required),
+    status: row.status,
+    ...(row.preferences_json ? { preferences: JSON.parse(row.preferences_json) as Preferences } : {}),
+  };
+}
+
 export class SessionStore {
-  constructor(private readonly db:Database.Database){}
-  create(input:CreateSessionInput):Session{const id=randomUUID(),now=new Date().toISOString();this.db.prepare('INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)').run(id,input.hostName.trim(),input.goal.trim(),'DRAFT',null,now,now);this.db.transaction(()=>mockCandidates.forEach(c=>this.db.prepare('INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(randomUUID(),id,c.theater,c.time,c.slot,c.format,c.price,c.location)))();return this.get(id)!;}
-  get(id:string):Session|undefined{const s=this.db.prepare('SELECT * FROM sessions WHERE id=?').get(id)as SessionRow|undefined;if(!s)return;const participants=(this.db.prepare('SELECT * FROM participants WHERE session_id=? ORDER BY rowid').all(id)as ParticipantRow[]).map(p=>({id:p.id,sessionId:p.session_id,name:p.name,phone:p.phone,required:Boolean(p.required),status:p.status,preferences:p.preferences_json?JSON.parse(p.preferences_json)as Preferences:undefined}));const candidates=this.db.prepare('SELECT id,theater,time,slot,format,price,location FROM candidates WHERE session_id=? ORDER BY rowid').all(id)as Candidate[];return{id:s.id,hostName:s.host_name,goal:s.goal,status:s.status,selectedCandidateId:s.selected_candidate_id??undefined,createdAt:s.created_at,updatedAt:s.updated_at,participants,candidates};}
-  findActiveByPhone(phone:string){const row=this.db.prepare("SELECT session_id FROM participants WHERE phone=? ORDER BY rowid DESC LIMIT 1").get(phone)as {session_id:string}|undefined;if(!row)return;const session=this.get(row.session_id);if(!session||['COMMITTED','CANCELLED'].includes(session.status))return;const participant=session.participants.find(p=>p.phone===phone);return participant?{session,participant}:undefined;}
-  addParticipant(s:Session,input:AddParticipantInput):Participant{if(s.status!=='DRAFT')throw new Error('Participants can only be added to a draft session');const p:Participant={id:randomUUID(),sessionId:s.id,name:input.name.trim(),phone:input.phone.trim(),required:input.required??true,status:'PENDING'};this.db.prepare('INSERT INTO participants VALUES (?, ?, ?, ?, ?, ?, ?)').run(p.id,p.sessionId,p.name,p.phone,Number(p.required),p.status,null);this.touch(s.id);return p;}
-  updateSession(s:Session){this.db.prepare('UPDATE sessions SET status=?,selected_candidate_id=?,updated_at=? WHERE id=?').run(s.status,s.selectedCandidateId??null,new Date().toISOString(),s.id);}
-  updateParticipant(p:Participant){this.db.prepare('UPDATE participants SET status=?,preferences_json=? WHERE id=?').run(p.status,p.preferences?JSON.stringify(p.preferences):null,p.id);this.touch(p.sessionId);}
-  receiveWebhook(provider:string,id:string){if(!id)return false;try{this.db.prepare('INSERT INTO webhook_receipts VALUES (?, ?, ?)').run(provider,id,new Date().toISOString());return false;}catch{return true;}}
-  private touch(id:string){this.db.prepare('UPDATE sessions SET updated_at=? WHERE id=?').run(new Date().toISOString(),id);}
+  constructor(private readonly db: Database.Database) {}
+
+  create(input: CreateSessionInput): Session {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare('INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      id,
+      input.hostName.trim(),
+      input.goal.trim(),
+      'DRAFT',
+      null,
+      now,
+      now,
+    );
+    this.db.transaction(() => {
+      for (const candidate of mockCandidates) {
+        this.db.prepare('INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+          randomUUID(),
+          id,
+          candidate.theater,
+          candidate.time,
+          candidate.slot,
+          candidate.format,
+          candidate.price,
+          candidate.location,
+        );
+      }
+    })();
+    return this.get(id)!;
+  }
+
+  get(id: string): Session | undefined {
+    const row = this.db.prepare('SELECT * FROM sessions WHERE id=?').get(id) as SessionRow | undefined;
+    if (!row) return undefined;
+    const participants = (
+      this.db.prepare('SELECT * FROM participants WHERE session_id=? ORDER BY rowid').all(id) as ParticipantRow[]
+    ).map(participantFromRow);
+    const candidates = this.db.prepare('SELECT * FROM candidates WHERE session_id=? ORDER BY rowid').all(id) as Candidate[];
+    return {
+      id: row.id,
+      hostName: row.host_name,
+      goal: row.goal,
+      status: row.status,
+      ...(row.selected_candidate_id ? { selectedCandidateId: row.selected_candidate_id } : {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      participants,
+      candidates,
+    };
+  }
+
+  addParticipant(session: Session, input: AddParticipantInput): Participant {
+    if (session.status !== 'DRAFT') throw new Error('Participants can only be added to a draft session');
+    const participant: Participant = {
+      id: randomUUID(),
+      sessionId: session.id,
+      name: input.name.trim(),
+      phone: normalizeE164(input.phone),
+      required: input.required ?? true,
+      status: 'PENDING',
+    };
+    this.db.prepare('INSERT INTO participants VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      participant.id,
+      participant.sessionId,
+      participant.name,
+      participant.phone,
+      Number(participant.required),
+      participant.status,
+      null,
+    );
+    this.touch(session.id);
+    return participant;
+  }
+
+  updateSession(session: Session): void {
+    this.db.prepare('UPDATE sessions SET status=?,selected_candidate_id=?,updated_at=? WHERE id=?').run(
+      session.status,
+      session.selectedCandidateId ?? null,
+      new Date().toISOString(),
+      session.id,
+    );
+  }
+
+  updateParticipant(participant: Participant): void {
+    this.db.prepare('UPDATE participants SET status=?,preferences_json=? WHERE id=?').run(
+      participant.status,
+      participant.preferences ? JSON.stringify(participant.preferences) : null,
+      participant.id,
+    );
+    this.touch(participant.sessionId);
+  }
+
+  findActiveParticipantByPhone(phone: string): { session: Session; participant: Participant } | undefined {
+    const normalized = normalizeE164(phone);
+    const row = this.db.prepare(`
+      SELECT p.* FROM participants p
+      JOIN sessions s ON s.id = p.session_id
+      WHERE p.phone = ? AND s.status NOT IN ('COMMITTED', 'CANCELLED')
+      ORDER BY s.updated_at DESC
+      LIMIT 1
+    `).get(normalized) as ParticipantRow | undefined;
+    if (!row) return undefined;
+    const session = this.get(row.session_id);
+    if (!session) return undefined;
+    const participant = session.participants.find((item) => item.id === row.id);
+    return participant ? { session, participant } : undefined;
+  }
+
+  rememberCall(callId: string, metadata: CallMetadata): void {
+    this.db.prepare('INSERT OR REPLACE INTO call_contexts VALUES (?, ?, ?)').run(
+      callId,
+      JSON.stringify(metadata),
+      new Date().toISOString(),
+    );
+  }
+
+  lookupCall(callId: string): CallMetadata | undefined {
+    const row = this.db.prepare('SELECT metadata_json FROM call_contexts WHERE call_id=?').get(callId) as
+      | { metadata_json: string }
+      | undefined;
+    return row ? JSON.parse(row.metadata_json) as CallMetadata : undefined;
+  }
+
+  receiveWebhook(provider: string, id: string): boolean {
+    if (!id) return false;
+    try {
+      this.db.prepare('INSERT INTO webhook_receipts VALUES (?, ?, ?)').run(provider, id, new Date().toISOString());
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  releaseWebhook(provider: string, id: string): void {
+    this.db.prepare('DELETE FROM webhook_receipts WHERE provider=? AND webhook_id=?').run(provider, id);
+  }
+
+  private touch(id: string): void {
+    this.db.prepare('UPDATE sessions SET updated_at=? WHERE id=?').run(new Date().toISOString(), id);
+  }
 }

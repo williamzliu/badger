@@ -10,5 +10,7 @@ assert.equal(participant.required, true);
 assert.equal(store.get(session.id)!.participants[0].name, 'Alex');
 assert.equal(store.receiveWebhook('cartesia', 'webhook-1'), false);
 assert.equal(store.receiveWebhook('cartesia', 'webhook-1'), true);
-assert.equal(store.receiveWebhook('twilio', 'webhook-1'), false);
+assert.equal(store.receiveWebhook('spectrum', 'webhook-1'), false);
+store.releaseWebhook('cartesia', 'webhook-1');
+assert.equal(store.receiveWebhook('cartesia', 'webhook-1'), false);
 console.info('foundation test passed');

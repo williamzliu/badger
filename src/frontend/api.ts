@@ -115,10 +115,12 @@ export function clearSession() {
 
 export async function injectPreferences(participantId: string, preferences: Preferences): Promise<void> {
   const sessionId = requireSessionId();
-  // Backend guards this route with BADGER_TOOL_SECRET when set. For live-mode
-  // rehearsals, stash the secret on the operator machine:
-  //   localStorage.setItem('badger.toolSecret', '<secret>')
   const secret = localStorage.getItem('badger.toolSecret');
+  if (!secret) {
+    await http('POST', '/internal/demo/inject', { sessionId, participantId, ...preferences });
+    scheduleRefetch();
+    return;
+  }
   const response = await fetch('/internal/preferences', {
     method: 'POST',
     headers: {
