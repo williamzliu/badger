@@ -249,7 +249,7 @@ export class LiveCommunications implements Communications {
   private readonly preparing = new Set<string>();
   private readonly reviewQueued = new Set<string>();
   private readonly reviewing = new Set<string>();
-  private readonly planChanging = new Set<string>();
+  private readonly planChanges = new Map<string, Promise<void>>();
   private readonly activeCalls = new Map<string, number>();
   private readonly recoveryAttempts = new Map<string, number>();
   private readonly webhook: CartesiaWebhookProcessor;
@@ -937,16 +937,35 @@ export class LiveCommunications implements Communications {
     throw new Error('Sail follow-up did not choose SMS or CALL');
   }
 
-  private async applyPlanChange(
+  private applyPlanChange(
     sessionId: string,
     participantId: string,
     revisedGoal: string,
     acknowledgement?: string,
     inboundEventId?: string,
   ): Promise<void> {
-    if (this.planChanging.has(sessionId)) return;
-    this.planChanging.add(sessionId);
-    try {
+    // Plan changes serialize per session instead of dropping late arrivals:
+    // a second participant's revision during the first one's research window
+    // must still be acknowledged and applied, in order.
+    const previous = this.planChanges.get(sessionId) ?? Promise.resolve();
+    const run = previous.then(() =>
+      this.runPlanChange(sessionId, participantId, revisedGoal, acknowledgement, inboundEventId));
+    const settled = run.catch(() => {});
+    this.planChanges.set(sessionId, settled);
+    void settled.then(() => {
+      if (this.planChanges.get(sessionId) === settled) this.planChanges.delete(sessionId);
+    });
+    return run;
+  }
+
+  private async runPlanChange(
+    sessionId: string,
+    participantId: string,
+    revisedGoal: string,
+    acknowledgement?: string,
+    inboundEventId?: string,
+  ): Promise<void> {
+    {
       let session = this.config.sessions.get(sessionId);
       let participant = session?.participants.find((item) => item.id === participantId);
       if (!session || !participant || ['COMMITTED', 'CANCELLED'].includes(session.status)) return;
@@ -986,8 +1005,6 @@ export class LiveCommunications implements Communications {
       this.config.workflow.reevaluate(fresh);
       const evaluated = this.config.sessions.get(session.id);
       if (evaluated) await this.afterPreferences(evaluated, 'COLLECTING');
-    } finally {
-      this.planChanging.delete(sessionId);
     }
   }
 
