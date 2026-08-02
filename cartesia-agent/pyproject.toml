@@ -1,0 +1,12 @@
+[project]
+name = "badger-cartesia-agent"
+version = "0.1.0"
+description = "Narrow Cartesia Line voice agent for Badger participant interviews"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "cartesia-line>=0.2,<0.3",
+  "httpx>=0.27,<1",
+]
+
+[tool.uv]
+package = false

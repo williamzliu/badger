@@ -1,1 +1,39 @@
-{"name":"badger","version":"0.1.0","private":true,"type":"module","scripts":{"dev":"tsx watch src/backend/server.ts","start":"tsx src/backend/server.ts","check":"tsc --noEmit","test:foundation":"tsx src/backend/foundation.test.ts","test:backend":"tsx src/backend/foundation.test.ts && tsx src/backend/api.test.ts && tsx src/backend/workflow.test.ts && tsx src/backend/coordination.test.ts","dev:web":"vite","build:web":"vite build","preview:web":"vite preview","check:web":"tsc -p tsconfig.web.json"},"dependencies":{"@fontsource-variable/inter":"^5.3.0","better-sqlite3":"^12.4.1","fastify":"^5.6.1","react":"^19.2.8","react-dom":"^19.2.8"},"devDependencies":{"@types/better-sqlite3":"^7.6.13","@types/node":"^22.15.3","@types/react":"^19.2.18","@types/react-dom":"^19.2.4","@vitejs/plugin-react":"^6.0.5","tsx":"^4.19.3","typescript":"^5.8.3","vite":"^8.2.0"}}
+{
+  "name": "badger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/backend/server.ts",
+    "start": "tsx src/backend/server.ts",
+    "check": "tsc --noEmit",
+    "test": "npm run test:backend && npm run test:voice",
+    "test:foundation": "tsx src/backend/foundation.test.ts",
+    "test:backend": "tsx src/backend/foundation.test.ts && tsx src/backend/api.test.ts && tsx src/backend/workflow.test.ts && tsx src/backend/coordination.test.ts",
+    "test:voice": "tsc -p tsconfig.voice.json && node --test dist/test/*.test.js",
+    "spectrum:smoke": "tsc -p tsconfig.voice.json && node --env-file=.env dist/src/voice/spectrum-smoke.js",
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "preview:web": "vite preview",
+    "check:web": "tsc -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@spectrum-ts/core": "^12.7.0",
+    "@spectrum-ts/imessage": "^12.7.0",
+    "better-sqlite3": "^12.4.1",
+    "fastify": "^5.6.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "tsx": "^4.19.3",
+    "typescript": "^5.9.2",
+    "vite": "^8.2.0"
+  }
+}

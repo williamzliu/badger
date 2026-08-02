@@ -1,7 +1,17 @@
-node_modules
-data/*.db
-.env
-dist
-
-# SQLite demo database
+node_modules/
+dist/
 data/
+
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+*.log
+coverage/
+*.lcov
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+.vite/
