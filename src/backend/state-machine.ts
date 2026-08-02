@@ -1,26 +1,10 @@
 import { EventLog } from './events.js';
 import { SessionStore } from './sessions.js';
-import { Session } from '../shared/types.js';
+import { Participant, Preferences, Session } from '../shared/types.js';
 
 export class BadgerWorkflow {
   constructor(private readonly sessions: SessionStore, private readonly events: EventLog) {}
-
-  start(session: Session): Session {
-    if (session.status !== 'DRAFT') throw new Error('Only draft sessions can start');
-    if (session.participants.length === 0) throw new Error('Add at least one participant before starting');
-
-    session.status = 'CONTACTING';
-    this.sessions.updateSession(session);
-    this.events.append(session.id, 'session.started', `Contacting ${session.participants.length} people…`);
-
-    for (const participant of session.participants) {
-      participant.status = 'TEXTED';
-      this.sessions.updateParticipant(participant);
-      this.events.append(session.id, 'sms.queued', `Contacting ${participant.name}`, { participantId: participant.id });
-    }
-
-    session.status = 'COLLECTING';
-    this.sessions.updateSession(session);
-    return session;
-  }
+  start(session: Session): Session { if(session.status!=='DRAFT')throw new Error('Only draft sessions can start');if(!session.participants.length)throw new Error('Add at least one participant before starting');session.status='CONTACTING';this.sessions.updateSession(session);this.events.append(session.id,'session.started',`Contacting ${session.participants.length} people…`);for(const p of session.participants){p.status='TEXTED';this.sessions.updateParticipant(p);this.events.append(session.id,'sms.queued',`Contacting ${p.name}`,{participantId:p.id});}session.status='COLLECTING';this.sessions.updateSession(session);return session; }
+  recordPreferences(session:Session, participant:Participant, preferences:Preferences){participant.preferences=preferences;participant.status='RESPONDED';this.sessions.updateParticipant(participant);this.events.append(session.id,'preferences.received',`${participant.name}'s availability received`,{participantId:participant.id});this.evaluate(session);}
+  private evaluate(session:Session){const required=session.participants.filter(p=>p.required);if(!required.length||!required.every(p=>p.preferences))return;session.status='MATCHING';this.sessions.updateSession(session);this.events.append(session.id,'matching.started','Checking viable showtimes…');const viable=session.candidates.filter(c=>required.every(p=>p.preferences!.availability.includes(c.slot)&&!p.preferences!.hardVetoes.includes(c.slot)));if(viable.length){session.selectedCandidateId=viable[0].id;session.status='PROPOSING';required.forEach(p=>{p.status='PROPOSED';this.sessions.updateParticipant(p);});this.sessions.updateSession(session);this.events.append(session.id,'plan.proposed',`Badger found ${viable[0].time} at ${viable[0].theater}`,{candidateId:viable[0].id});return;}session.status='RESOLVING';const target=required.slice().sort((a,b)=>b.preferences!.flexibility-a.preferences!.flexibility)[0];target.status='NEEDS_FOLLOWUP';this.sessions.updateParticipant(target);this.sessions.updateSession(session);this.events.append(session.id,'conflict.detected','One availability conflict detected');this.events.append(session.id,'flexibility.requested',`Asking ${target.name} about flexibility`,{participantId:target.id});}
 }
