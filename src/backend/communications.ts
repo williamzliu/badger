@@ -161,7 +161,7 @@ export function instantInboundDecision(
     (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP')
   );
   const inferred = body.trim() ? inferPreferencesFromText(session, participant, body) : undefined;
-  const explicitlyNegative = /^(?:no|nope|nah)\b|\b(?:cannot|can't|cant|unavailable|not available|doesn't work|does not work|won't work)\b/i
+  const explicitlyNegative = /^(?:no|nope|nah)\b(?!\s*(?:problem|worries|sweat|issue|doubt))|\b(?:cannot|can't|cant|unavailable|not available|doesn't work|does not work|won't work)\b/i
     .test(body.trim());
   const relative = isActiveParticipant ? relativeCandidate(session, body) : undefined;
   if (relative) {

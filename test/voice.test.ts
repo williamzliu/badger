@@ -288,6 +288,8 @@ test("Spectrum replies are correlated and normalized", async () => {
   assert.equal(classifyInboundMessage("I can’t make that"), "decline");
   assert.equal(classifyInboundMessage("that doesn't work for me"), "decline");
   assert.equal(classifyInboundMessage("no it doesn't"), "decline");
+  assert.equal(classifyInboundMessage("No problem, I'll be there"), "confirm");
+  assert.equal(classifyInboundMessage("no worries, count me in"), "confirm");
   assert.equal(classifyInboundMessage("That works for me"), "confirm");
   assert.equal(classifyInboundMessage("I'm down"), "confirm");
   assert.equal(classifyInboundMessage("bet"), "confirm");

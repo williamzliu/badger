@@ -284,7 +284,9 @@ export function classifyInboundMessage(body: string): InboundMessageIntent {
   }
   if (
     ["no", "n", "nope", "nah", "no thanks", "no thank you", "im out", "i'm out", "count me out", "decline"].includes(bare) ||
-    /^(?:no|nope|nah)\b/.test(normalized) ||
+    // "No problem" / "no worries" open plenty of confirmations — a leading
+    // "no" only counts as a decline when it isn't part of a positive idiom.
+    /^(?:no|nope|nah)\b(?!\s*(?:problem|worries|sweat|issue|doubt))/.test(normalized) ||
     /\b(?:can(?:not|'t)|won't)\s+(?:make|do)\b/.test(normalized) ||
     /\b(?:not able to make|doesn't work|does not work)\b/.test(normalized)
   ) return "decline";
