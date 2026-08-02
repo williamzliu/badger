@@ -135,6 +135,12 @@ export class SessionStore {
           candidate.location,
         );
       }
+      // A selected candidate that no longer exists must not survive the swap:
+      // downstream flows (acceptFlexibility, reconciliation keys, hasActiveOption)
+      // all resolve the id against the candidates table.
+      if (session.selectedCandidateId && !candidates.some((candidate) => candidate.id === session.selectedCandidateId)) {
+        this.db.prepare('UPDATE sessions SET selected_candidate_id=NULL WHERE id=?').run(sessionId);
+      }
       this.touch(sessionId);
     })();
     return this.get(sessionId)!;

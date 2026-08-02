@@ -321,6 +321,17 @@ export class LiveCommunications implements Communications {
         this.config.events.append(session.id, 'outreach.planned', 'Sail reviewed the call-first outreach strategy', {
           steps: preparation.outreach.map(({ message: _message, ...step }) => step),
         });
+        // Fast repliers can push the session into MATCHING/RESOLVING against
+        // the seeded candidates while research is still running. That state is
+        // framed around candidates that were just deleted — rematch on the
+        // researched set before any flexibility conversation continues.
+        const refreshed = this.config.sessions.get(session.id);
+        if (refreshed && ['MATCHING', 'RESOLVING'].includes(refreshed.status)) {
+          const previousStatus = refreshed.status;
+          this.config.workflow.resumeAfterCandidateRefresh(refreshed);
+          const evaluated = this.config.sessions.get(session.id);
+          if (evaluated) await this.afterPreferences(evaluated, previousStatus);
+        }
       } catch (error) {
         this.integrationFailure(session, undefined, 'Sail research and outreach planning', error);
       } finally {

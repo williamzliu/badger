@@ -150,6 +150,24 @@ export class BadgerWorkflow {
     return session;
   }
 
+  /** The candidate set was replaced while a match or conflict was in flight.
+   * Any outstanding ask referenced candidates that no longer exist, so reopen
+   * matching against the new set instead of resolving against deleted rows. */
+  resumeAfterCandidateRefresh(session: Session): Session {
+    if (!['MATCHING', 'RESOLVING'].includes(session.status)) return session;
+    for (const member of session.participants) {
+      if (member.status === 'NEEDS_FOLLOWUP') {
+        member.status = 'RESPONDED';
+        this.sessions.updateParticipant(member);
+      }
+    }
+    session.status = 'COLLECTING';
+    session.selectedCandidateId = undefined;
+    this.sessions.updateSession(session);
+    this.evaluate(session);
+    return session;
+  }
+
   acceptFlexibility(session: Session, participant: Participant): Session {
     if (session.status !== 'RESOLVING' || participant.status !== 'NEEDS_FOLLOWUP') {
       throw new Error('Participant is not the active flexibility target');
