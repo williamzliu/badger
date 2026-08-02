@@ -30,7 +30,14 @@ body {
   font-family: var(--sans);
   font-size: 15px;
   line-height: 1.5;
+  /* Cross-browser parity: both fonts are bundled via @fontsource (never
+     system Georgia/Times unless loading fails), smoothing is normalized
+     for WebKit and Firefox, and synthetic bold/italic is disabled so no
+     browser fakes weights Instrument Serif doesn't ship. */
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
 }
 
 button {
