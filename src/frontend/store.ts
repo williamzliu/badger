@@ -44,7 +44,7 @@ const FEED_LIMIT = 200;
 export function feedKindFor(type: string): FeedKind {
   if (type.startsWith('sms.') || type.startsWith('message.')) return 'sms';
   if (type.startsWith('call.')) return 'call';
-  if (['conflict.detected', 'flexibility.requested', 'participant.declined', 'session.cancelled'].includes(type)) return 'conflict';
+  if (['conflict.detected', 'flexibility.requested', 'participant.declined', 'session.cancelled', 'integration.failed'].includes(type)) return 'conflict';
   if (['conflict.resolved', 'preferences.received', 'proposal.confirmed', 'plan.proposed', 'plan.committed'].includes(type)) return 'success';
   return 'info';
 }

@@ -117,7 +117,18 @@ export async function injectPreferences(participantId: string, preferences: Pref
   const sessionId = requireSessionId();
   const secret = localStorage.getItem('badger.toolSecret');
   if (!secret) {
-    await http('POST', '/internal/demo/inject', { sessionId, participantId, ...preferences });
+    try {
+      await http('POST', '/internal/demo/inject', { sessionId, participantId, ...preferences });
+    } catch (error) {
+      // The backend 404s this route when live providers are active or
+      // BADGER_DEMO_MODE isn't set — explain instead of "Not found".
+      if ((error as Error).message.includes('Not found')) {
+        throw new Error(
+          'Demo injection is off (live providers active or BADGER_DEMO_MODE unset) — preferences must come from real calls, or set badger.toolSecret to use /internal/preferences',
+        );
+      }
+      throw error;
+    }
     scheduleRefetch();
     return;
   }
