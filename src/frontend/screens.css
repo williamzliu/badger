@@ -207,6 +207,10 @@
   font-size: 15px;
 }
 
+.live-reset {
+  margin-top: 18px;
+}
+
 .live-grid {
   display: grid;
   grid-template-columns: minmax(340px, 1fr) 1.3fr;

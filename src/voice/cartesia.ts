@@ -57,6 +57,7 @@ export type CartesiaClientConfig = {
   fromNumberId: string;
   baseUrl?: string;
   ringingTimeoutSeconds?: number;
+  requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 };
 
@@ -99,6 +100,7 @@ export class CartesiaClient {
 
     const response = await this.fetchImpl(`${this.baseUrl}/agents/calls`, {
       method: "POST",
+      signal: AbortSignal.timeout(this.config.requestTimeoutMs ?? 10_000),
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": this.config.apiKey,
