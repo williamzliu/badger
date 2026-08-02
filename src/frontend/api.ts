@@ -115,7 +115,33 @@ export function clearSession() {
 
 export async function injectPreferences(participantId: string, preferences: Preferences): Promise<void> {
   const sessionId = requireSessionId();
-  await http('POST', '/internal/preferences', { sessionId, participantId, ...preferences });
+  // Backend guards this route with BADGER_TOOL_SECRET when set. For live-mode
+  // rehearsals, stash the secret on the operator machine:
+  //   localStorage.setItem('badger.toolSecret', '<secret>')
+  const secret = localStorage.getItem('badger.toolSecret');
+  const response = await fetch('/internal/preferences', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(secret ? { authorization: `Bearer ${secret}` } : {}),
+    },
+    body: JSON.stringify({ sessionId, participantId, ...preferences }),
+  });
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(
+        "Preference injection is locked — run localStorage.setItem('badger.toolSecret', <BADGER_TOOL_SECRET>) in this browser",
+      );
+    }
+    let message = `POST /internal/preferences → ${response.status}`;
+    try {
+      const parsed = (await response.json()) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(message);
+  }
   scheduleRefetch();
 }
 
