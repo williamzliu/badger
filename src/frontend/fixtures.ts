@@ -17,10 +17,10 @@ export interface DraftInput {
 
 // TODO(demo): swap for the three real participant phones + one seeded number.
 export const DEMO_PARTICIPANTS: DraftParticipant[] = [
-  { name: 'Alex', phone: '+1 415 555 0101', required: true },
-  { name: 'Priya', phone: '+1 415 555 0102', required: true },
-  { name: 'Jordan', phone: '+1 415 555 0103', required: true },
-  { name: 'Sam', phone: '+1 415 555 0104', required: true },
+  { name: 'Sam', phone: '+1 415 555 0101', required: true },
+  { name: 'Kaustubh', phone: '+1 415 555 0102', required: true },
+  { name: 'Jessica', phone: '+1 415 555 0103', required: true },
+  { name: 'William', phone: '+1 415 555 0104', required: true },
 ];
 
 // Slots mirror src/backend/mocks.ts so live-mode injection produces the same story.
