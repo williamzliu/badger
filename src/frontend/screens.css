@@ -399,7 +399,7 @@
 
 .feed-item {
   display: grid;
-  grid-template-columns: 86px 20px 1fr;
+  grid-template-columns: minmax(92px, auto) 20px 1fr;
   gap: 12px;
   align-items: baseline;
   padding: 9px 8px;
@@ -414,9 +414,10 @@
 
 .feed-time {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .feed-icon {
