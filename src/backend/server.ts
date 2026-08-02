@@ -1,58 +1,19 @@
 import Fastify from 'fastify';
 import { openDatabase } from './db.js';
-import { EventLog } from './events.js';
+import { EventLog, toPublicEvent } from './events.js';
 import { SessionStore } from './sessions.js';
 import { BadgerWorkflow } from './state-machine.js';
-import { AddParticipantInput, CreateSessionInput } from '../shared/types.js';
-
-function validText(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0; }
-
-export function createServer(databasePath = ':memory:') {
-  const database = openDatabase(databasePath);
-  const sessions = new SessionStore(database);
-  const events = new EventLog(database);
-  const workflow = new BadgerWorkflow(sessions, events);
-  const app = Fastify({ logger: false });
-
-  app.get('/health', async () => ({ ok: true }));
-  app.post('/sessions', async (request, reply) => {
-    const input = request.body as CreateSessionInput;
-    if (!validText(input?.hostName) || !validText(input?.goal)) return reply.code(400).send({ error: 'hostName and goal are required' });
-    const session = sessions.create(input);
-    events.append(session.id, 'session.created', 'Badger created');
-    return reply.code(201).send(session);
-  });
-  app.get('/sessions/:id', async (request, reply) => {
-    const session = sessions.get((request.params as { id: string }).id);
-    return session ?? reply.code(404).send({ error: 'Session not found' });
-  });
-  app.post('/sessions/:id/participants', async (request, reply) => {
-    const session = sessions.get((request.params as { id: string }).id);
-    if (!session) return reply.code(404).send({ error: 'Session not found' });
-    const input = request.body as AddParticipantInput;
-    if (!validText(input?.name) || !validText(input?.phone)) return reply.code(400).send({ error: 'name and phone are required' });
-    const participant = sessions.addParticipant(session, input);
-    events.append(session.id, 'participant.added', `${participant.name} added`, { participantId: participant.id });
-    return reply.code(201).send(participant);
-  });
-  app.post('/sessions/:id/start', async (request, reply) => {
-    const session = sessions.get((request.params as { id: string }).id);
-    if (!session) return reply.code(404).send({ error: 'Session not found' });
-    try { return workflow.start(session); } catch (error) { return reply.code(400).send({ error: (error as Error).message }); }
-  });
-  app.get('/sessions/:id/events', async (request, reply) => {
-    const id = (request.params as { id: string }).id;
-    if (!sessions.get(id)) return reply.code(404).send({ error: 'Session not found' });
-    reply.hijack();
-    reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-    events.list(id).forEach((event) => reply.raw.write(`data: ${JSON.stringify(event)}\n\n`));
-    const unsubscribe = events.subscribe(id, (event) => reply.raw.write(`data: ${JSON.stringify(event)}\n\n`));
-    request.raw.on('close', unsubscribe);
-  });
-  return { app, sessions, events, workflow };
-}
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const { app } = createServer(process.env.DATABASE_PATH ?? './data/badger.db');
-  app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
-}
+import { AddParticipantInput, CreateSessionInput, Preferences } from '../shared/types.js';
+function validText(value:unknown):value is string{return typeof value==='string'&&value.trim().length>0;}
+function validPreferences(value:unknown):value is Preferences{const p=value as Preferences;return Boolean(p&&Array.isArray(p.availability)&&Array.isArray(p.hardVetoes)&&Array.isArray(p.preferences)&&Number.isFinite(p.flexibility)&&p.flexibility>=0&&p.flexibility<=1&&validText(p.summary));}
+export function createServer(databasePath=':memory:'){const database=openDatabase(databasePath),sessions=new SessionStore(database),events=new EventLog(database),workflow=new BadgerWorkflow(sessions,events),app=Fastify({logger:false});
+  app.get('/health',async()=>({ok:true}));
+  app.post('/sessions',async(req,reply)=>{const input=req.body as CreateSessionInput;if(!validText(input?.hostName)||!validText(input?.goal))return reply.code(400).send({error:'hostName and goal are required'});const s=sessions.create(input);events.append(s.id,'session.created','Badger created');return reply.code(201).send(s);});
+  app.get('/sessions/:id',async(req,reply)=>sessions.get((req.params as {id:string}).id)??reply.code(404).send({error:'Session not found'}));
+  app.post('/sessions/:id/participants',async(req,reply)=>{const s=sessions.get((req.params as {id:string}).id);if(!s)return reply.code(404).send({error:'Session not found'});const input=req.body as AddParticipantInput;if(!validText(input?.name)||!validText(input?.phone))return reply.code(400).send({error:'name and phone are required'});try{const p=sessions.addParticipant(s,input);events.append(s.id,'participant.added',`${p.name} added`,{participantId:p.id});return reply.code(201).send(p);}catch(error){return reply.code(400).send({error:(error as Error).message});}});
+  app.post('/sessions/:id/start',async(req,reply)=>{const s=sessions.get((req.params as {id:string}).id);if(!s)return reply.code(404).send({error:'Session not found'});try{return workflow.start(s);}catch(error){return reply.code(400).send({error:(error as Error).message});}});
+  app.post('/internal/preferences',async(req,reply)=>{const body=req.body as {sessionId?:string;participantId?:string}&Preferences;const s=body.sessionId?sessions.get(body.sessionId):undefined;if(!s)return reply.code(404).send({error:'Session not found'});const p=s.participants.find(x=>x.id===body.participantId);if(!p)return reply.code(404).send({error:'Participant not found'});if(!validPreferences(body))return reply.code(400).send({error:'Invalid preferences payload'});try{workflow.recordPreferences(s,p,body);return sessions.get(s.id);}catch(error){return reply.code(400).send({error:(error as Error).message});}});
+  for(const action of ['confirm','decline'] as const) app.post(`/sessions/:id/participants/:participantId/${action}`,async(req,reply)=>{const s=sessions.get((req.params as {id:string}).id);if(!s)return reply.code(404).send({error:'Session not found'});const p=s.participants.find(x=>x.id===(req.params as {participantId:string}).participantId);if(!p)return reply.code(404).send({error:'Participant not found'});try{action==='confirm'?workflow.confirm(s,p):workflow.decline(s,p);return sessions.get(s.id);}catch(error){return reply.code(400).send({error:(error as Error).message});}});
+  app.get('/sessions/:id/events',async(req,reply)=>{const id=(req.params as {id:string}).id;if(!sessions.get(id))return reply.code(404).send({error:'Session not found'});reply.hijack();reply.raw.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache',connection:'keep-alive'});events.list(id).forEach(event=>reply.raw.write(`data: ${JSON.stringify(toPublicEvent(event))}\n\n`));const unsub=events.subscribe(id,event=>reply.raw.write(`data: ${JSON.stringify(toPublicEvent(event))}\n\n`));req.raw.on('close',unsub);});
+ return {app,sessions,events,workflow};}
+if(import.meta.url===`file://${process.argv[1]}`){const {app}=createServer(process.env.DATABASE_PATH??'./data/badger.db');app.listen({port:Number(process.env.PORT??3000),host:'0.0.0.0'});}
