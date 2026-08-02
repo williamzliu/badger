@@ -1,8 +1,11 @@
 import type { Candidate, Participant, Preferences, Session } from '../shared/types';
 
 export const DEMO_HOST = 'Kaustubh';
-export const DEMO_HOST_PHONE = '+1 415 555 0100';
 export const DEMO_GOAL = 'See The Odyssey this weekend';
+
+// Real numbers stay out of git: set VITE_DEMO_PHONE_* in .env (untracked).
+const env = import.meta.env as Record<string, string | undefined>;
+export const DEMO_HOST_PHONE = env.VITE_DEMO_PHONE_HOST || '+1 415 555 0100';
 
 export interface DraftParticipant {
   name: string;
@@ -18,11 +21,11 @@ export interface DraftInput {
 }
 
 // The host is prepended as a participant at draft time (Badger calls you too).
-// TODO(demo): swap for the three real participant phones.
+// The last participant is the demo's conflict blocker.
 export const DEMO_PARTICIPANTS: DraftParticipant[] = [
-  { name: 'Sam', phone: '+1 415 555 0101', required: true },
-  { name: 'Jessica', phone: '+1 415 555 0102', required: true },
-  { name: 'William', phone: '+1 415 555 0103', required: true },
+  { name: 'Sam', phone: env.VITE_DEMO_PHONE_SAM || '+1 415 555 0101', required: true },
+  { name: 'Dana', phone: env.VITE_DEMO_PHONE_DANA || '+1 415 555 0102', required: true },
+  { name: 'William', phone: env.VITE_DEMO_PHONE_WILLIAM || '+1 415 555 0103', required: true },
 ];
 
 // Slots mirror src/backend/mocks.ts so live-mode injection produces the same story.
