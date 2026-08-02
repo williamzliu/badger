@@ -13,10 +13,8 @@ import { EventLog } from './events.js';
 import { OpenAIFastInboundPlanner, type InboundMessagePlanner } from './fast-inbound.js';
 import { OpenAIOptionResearcher } from './research.js';
 import {
-  type CoordinationPreparation,
   type GroupPlanner,
   type InboundMessageDecision,
-  type OutreachStep,
   type PlannerDecision,
   SailPlanner,
   type SailCompletionWindow,
@@ -161,7 +159,7 @@ export function instantInboundDecision(
     (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP')
   );
   const inferred = body.trim() ? inferPreferencesFromText(session, participant, body) : undefined;
-  const explicitlyNegative = /^(?:no|nope|nah)\b|\b(?:cannot|can't|cant|unavailable|not available|doesn't work|does not work|won't work)\b/i
+  const explicitlyNegative = /^(?:no|nope|nah)\b(?!\s*(?:problem|worries|sweat|issue|doubt))|\b(?:cannot|can't|cant|unavailable|not available|doesn't work|does not work|won't work)\b/i
     .test(body.trim());
   const relative = isActiveParticipant ? relativeCandidate(session, body) : undefined;
   if (relative) {
@@ -251,7 +249,7 @@ export class LiveCommunications implements Communications {
   private readonly preparing = new Set<string>();
   private readonly reviewQueued = new Set<string>();
   private readonly reviewing = new Set<string>();
-  private readonly planChanging = new Set<string>();
+  private readonly planChanges = new Map<string, Promise<void>>();
   private readonly activeCalls = new Map<string, number>();
   private readonly recoveryAttempts = new Map<string, number>();
   private readonly webhook: CartesiaWebhookProcessor;
@@ -302,7 +300,9 @@ export class LiveCommunications implements Communications {
   async contact(session: Session): Promise<void> {
     // Start the real calls immediately. Research and long-horizon Sail
     // orchestration are useful context, but neither belongs on the ringing
-    // critical path.
+    // critical path. The opening text carries the goal context and the
+    // mandatory STOP opt-out notice, so it goes out alongside the dialing.
+    this.background(this.sendOpeningMessages(session.id));
     this.background(this.callParticipants(session.id, 0));
     if (this.config.planner.prepare) {
       this.preparing.add(session.id);
@@ -321,6 +321,17 @@ export class LiveCommunications implements Communications {
         this.config.events.append(session.id, 'outreach.planned', 'Sail reviewed the call-first outreach strategy', {
           steps: preparation.outreach.map(({ message: _message, ...step }) => step),
         });
+        // Fast repliers can push the session into MATCHING/RESOLVING against
+        // the seeded candidates while research is still running. That state is
+        // framed around candidates that were just deleted — rematch on the
+        // researched set before any flexibility conversation continues.
+        const refreshed = this.config.sessions.get(session.id);
+        if (refreshed && ['MATCHING', 'RESOLVING'].includes(refreshed.status)) {
+          const previousStatus = refreshed.status;
+          this.config.workflow.resumeAfterCandidateRefresh(refreshed);
+          const evaluated = this.config.sessions.get(session.id);
+          if (evaluated) await this.afterPreferences(evaluated, previousStatus);
+        }
       } catch (error) {
         this.integrationFailure(session, undefined, 'Sail research and outreach planning', error);
       } finally {
@@ -470,26 +481,18 @@ export class LiveCommunications implements Communications {
     }
   }
 
-  private async executeOutreachPlan(sessionId: string, preparation: CoordinationPreparation): Promise<void> {
-    await Promise.all(preparation.outreach.map((step) => this.executeOutreachStep(sessionId, step)));
-  }
-
-  private async executeOutreachStep(sessionId: string, step: OutreachStep): Promise<void> {
-    await delay(step.delaySeconds * 1_000, this.abort.signal);
-    let session = this.config.sessions.get(sessionId);
-    let participant = session?.participants.find((item) => item.id === step.participantId);
-    if (!session || !participant || this.abort.signal.aborted || ['COMMITTED', 'CANCELLED'].includes(session.status)) return;
-    if (step.channel !== 'CALL_ONLY') {
-      const message = /\bstop\b/i.test(step.message) ? step.message : `${step.message} Reply STOP to opt out.`;
-      await this.safeSend(session, participant, message, `opening:${session.id}:${participant.id}`);
-    }
-    if (step.channel === 'TEXT_ONLY') return;
-    if (step.channel === 'TEXT_THEN_CALL') await delay(step.callAfterSeconds * 1_000, this.abort.signal);
-    session = this.config.sessions.get(sessionId);
-    participant = session?.participants.find((item) => item.id === step.participantId);
-    if (!session || !participant || this.abort.signal.aborted || !['CONTACTING', 'COLLECTING'].includes(session.status)) return;
-    if (['RESPONDED', 'DECLINED', 'CONFIRMED', 'PROPOSED'].includes(participant.status)) return;
-    await this.placeParticipantCall(session, participant);
+  private async sendOpeningMessages(sessionId: string): Promise<void> {
+    const session = this.config.sessions.get(sessionId);
+    if (!session || this.abort.signal.aborted) return;
+    await Promise.all(session.participants.map(async (participant) => {
+      if (participant.status !== 'TEXTED') return;
+      await this.safeSend(
+        session,
+        participant,
+        MESSAGE_COPY.opening(session.hostName, session.goal),
+        `opening:${session.id}:${participant.id}`,
+      );
+    }));
   }
 
   private async placeParticipantCall(
@@ -575,7 +578,13 @@ export class LiveCommunications implements Communications {
     if (event.type === 'call.failed') {
       await this.safeSend(session, participant, MESSAGE_COPY.missedCall(), `missed:${session.id}:${participant.id}`);
     }
-    if (event.type === 'preferences.received' && !participant.preferences) {
+    if (event.type === 'preferences.received') {
+      // A flexibility-call target already has preferences on file — the
+      // transcript-recovered answer to the follow-up question must still be
+      // recorded, or the session stays wedged in RESOLVING. Outside that
+      // case, an existing answer wins over a late or duplicate call result.
+      const answersFollowUp = session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP';
+      if (participant.preferences && !answersFollowUp) return;
       const submitted = event.privateData.preferences as ParticipantPreferences | undefined;
       if (!submitted) return;
       // A call can finish after the session has moved on (e.g. an optional
@@ -818,6 +827,20 @@ export class LiveCommunications implements Communications {
     if (intent !== 'confirm' && !confirmsActiveOption) return;
     const previousStatus = session.status;
     if (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP') {
+      // On the broaden path there is no selected candidate — a bare "sounds
+      // good" answers the "what other day could work?" ask with nothing
+      // actionable, and acceptFlexibility would throw. Ask for a concrete
+      // window instead of dropping the reply.
+      const active = session.candidates.find((item) => item.id === session.selectedCandidateId);
+      if (!active || !participant.preferences) {
+        await this.safeSend(
+          session,
+          participant,
+          'Great — what day and time works for you? Reply here, or reply STOP to opt out.',
+          `clarify:${session.id}:${participant.id}:${event.id}`,
+        );
+        return;
+      }
       this.config.workflow.acceptFlexibility(session, participant);
       const fresh = this.config.sessions.get(session.id);
       if (fresh) await this.afterPreferences(fresh, previousStatus);
@@ -920,16 +943,35 @@ export class LiveCommunications implements Communications {
     throw new Error('Sail follow-up did not choose SMS or CALL');
   }
 
-  private async applyPlanChange(
+  private applyPlanChange(
     sessionId: string,
     participantId: string,
     revisedGoal: string,
     acknowledgement?: string,
     inboundEventId?: string,
   ): Promise<void> {
-    if (this.planChanging.has(sessionId)) return;
-    this.planChanging.add(sessionId);
-    try {
+    // Plan changes serialize per session instead of dropping late arrivals:
+    // a second participant's revision during the first one's research window
+    // must still be acknowledged and applied, in order.
+    const previous = this.planChanges.get(sessionId) ?? Promise.resolve();
+    const run = previous.then(() =>
+      this.runPlanChange(sessionId, participantId, revisedGoal, acknowledgement, inboundEventId));
+    const settled = run.catch(() => {});
+    this.planChanges.set(sessionId, settled);
+    void settled.then(() => {
+      if (this.planChanges.get(sessionId) === settled) this.planChanges.delete(sessionId);
+    });
+    return run;
+  }
+
+  private async runPlanChange(
+    sessionId: string,
+    participantId: string,
+    revisedGoal: string,
+    acknowledgement?: string,
+    inboundEventId?: string,
+  ): Promise<void> {
+    {
       let session = this.config.sessions.get(sessionId);
       let participant = session?.participants.find((item) => item.id === participantId);
       if (!session || !participant || ['COMMITTED', 'CANCELLED'].includes(session.status)) return;
@@ -969,8 +1011,6 @@ export class LiveCommunications implements Communications {
       this.config.workflow.reevaluate(fresh);
       const evaluated = this.config.sessions.get(session.id);
       if (evaluated) await this.afterPreferences(evaluated, 'COLLECTING');
-    } finally {
-      this.planChanging.delete(sessionId);
     }
   }
 

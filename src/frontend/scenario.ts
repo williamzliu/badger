@@ -1,5 +1,5 @@
 import type { Session } from '../shared/types';
-import { BLOCKER_PREFS, BLOCKER_RESOLVED_PREFS, prefsFor } from './fixtures';
+import { BLOCKER_PREFS, BLOCKER_RESOLVED_PREFS, DEMO_WINNER_SLOT, prefsFor } from './fixtures';
 
 export const CHECKPOINTS = ['launch', 'texted', 'calling', 'collecting', 'conflict', 'resolving', 'proposal', 'committed'] as const;
 export type Checkpoint = (typeof CHECKPOINTS)[number];
@@ -22,7 +22,9 @@ export function buildScenario(session: Session): Step[] {
   const people = session.participants;
   const blocker = people[people.length - 1];
   const others = people.slice(0, -1);
-  const winner = session.candidates[0];
+  // The plan the script resolves onto must be the same slot the blocker
+  // fixture conflicts over and then confirms — not blindly candidates[0].
+  const winner = session.candidates.find((c) => c.slot === DEMO_WINNER_SLOT) ?? session.candidates[0];
   const steps: Step[] = [];
 
   steps.push({
@@ -144,12 +146,12 @@ export function buildScenario(session: Session): Step[] {
     delay: 1300,
     type: 'flexibility.requested',
     checkpoint: 'resolving',
-    message: () => `Asking ${blocker.name} if Friday could work`,
+    message: () => `Asking ${blocker.name} if ${winner.time} could work`,
   });
   steps.push({
     delay: 5200,
     type: 'message.received',
-    message: () => `${blocker.name} replied — Friday works`,
+    message: () => `${blocker.name} replied — ${winner.time} works`,
   });
   steps.push({
     delay: 800,

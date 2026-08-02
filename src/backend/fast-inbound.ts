@@ -115,6 +115,16 @@ export class OpenAIFastInboundPlanner implements InboundMessagePlanner {
     if (!['ASK_FOLLOWUP', 'RESPOND_WITH_CONTEXT', 'CHANGE_PLAN'].includes(String(decision.action))) {
       decision.channel = 'NONE';
     }
+    // The tool schema offers SMS|CALL for every action, but the validator
+    // requires SMS for these two — coerce rather than dropping the reply.
+    if (['RESPOND_WITH_CONTEXT', 'CHANGE_PLAN'].includes(String(decision.action))) {
+      decision.channel = 'SMS';
+    }
+    // The schema cannot require a non-empty summary only for this action;
+    // the participant's own words are a faithful fallback.
+    if (String(decision.action) === 'RECORD_PREFERENCES' && !String(decision.summary ?? '').trim()) {
+      decision.summary = body.trim();
+    }
     return parseInboundDecision(decision);
   }
 }

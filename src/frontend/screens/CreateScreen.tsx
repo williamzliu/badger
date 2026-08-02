@@ -14,6 +14,7 @@ import { normalizePhone, prettyPhone, sanitizePhoneInput } from '../phone';
 import Logo from '../components/Logo';
 import BadgerMark from '../components/BadgerMark';
 import RotatingStatus from '../components/RotatingStatus';
+import RotatingWordMorph from '../components/RotatingWordMorph';
 
 interface Row {
   id: string;
@@ -291,7 +292,9 @@ export default function CreateScreen() {
       {snap.mode === 'mock' && <div className="mode-banner">Rehearsal</div>}
       <div className="create">
         <Logo />
-        <h1 className="display-hero create-title">What&rsquo;s the move?</h1>
+        <h1 className="display-hero create-title">
+          What&rsquo;s the <RotatingWordMorph words={['move', 'plan', 'idea', 'vibe', 'hang']} />?
+        </h1>
 
         <div className="card">
           <div className="card-sec">

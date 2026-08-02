@@ -364,13 +364,11 @@ export class SailPlanner implements GroupPlanner {
   async prepare(session: Session, options: { replanning?: boolean } = {}): Promise<CoordinationPreparation> {
     if (!this.config.researcher) throw new Error('Sail research tool is not configured');
     const history = closeDanglingCalls(await this.config.loadHistory(session.id));
-    const input: ConversationItem[] = [
-      ...history,
-      {
-        role: 'user',
-        content: `${options.replanning ? 'Revise' : 'Start'} coordination for this authoritative session:\n${JSON.stringify(sessionSnapshot(session, false))}`,
-      },
-    ];
+    const startTurn: ConversationItem = {
+      role: 'user',
+      content: `${options.replanning ? 'Revise' : 'Start'} coordination for this authoritative session:\n${JSON.stringify(sessionSnapshot(session, false))}`,
+    };
+    const input: ConversationItem[] = [...history, startTurn];
     const locationHint = this.config.locationHint ?? 'San Francisco Bay Area';
     await this.config.emitProgress?.(session.id, 'Checking live evidence against the final group…');
     const researched = await this.config.researcher.research({
@@ -387,10 +385,11 @@ export class SailPlanner implements GroupPlanner {
       role: 'system',
       content: `You are Badger's long-lived autonomous group coordinator. ${options.replanning ? 'Participants are not being called again. The group changed the goal mid-conversation; research and rank replacement options that respect the availability already collected.' : 'The backend launches all initial calls immediately, in parallel with this research turn, so those calls may already be ringing or underway.'} Evaluate the evidence, rank the strongest sourced options, and review one call-first outreach step for every participant. Do not narrate future call order or claim Badger "will call" someone; the UI must describe the actual live state. Do not propose or commit before hearing each participant's constraints. Failed or unanswered calls automatically fall back to SMS. Return two to four punchy public insights formatted like "Evidence · …", "Tradeoff · …", and "Plan · …". The Plan insight must describe the actual current execution state. All insight/reason fields are displayed publicly: stay group-level and never include a participant's private answer, constraint, veto, or flexibility score.`,
     };
-    const launchInput: ConversationItem[] = [...input, {
+    const researchTurn: ConversationItem = {
       role: 'user',
       content: `The sourced research tool returned these authoritative options:\n${JSON.stringify(researched)}`,
-    }];
+    };
+    const launchInput: ConversationItem[] = [...input, researchTurn];
     let launchOutput: ConversationItem[] = [];
     try {
       launchOutput = await this.requestTool(
@@ -460,7 +459,11 @@ export class SailPlanner implements GroupPlanner {
           ? 'Plan · Badger is preserving the replies already collected while researching the revised plan.'
           : 'Plan · Calls are already underway while Sail prepares the option and conflict strategy.',
       );
-      await this.config.saveHistory(session.id, [...launchInput, ...launchOutput, {
+      // Participant texts land in history throughout this multi-second
+      // research turn. Append to the latest persisted history rather than
+      // overwriting it with the snapshot loaded at entry.
+      const latestHistory = closeDanglingCalls(await this.config.loadHistory(session.id));
+      await this.config.saveHistory(session.id, [...latestHistory, startTurn, researchTurn, ...launchOutput, {
         type: 'function_call_output',
         call_id: launchCall.call_id,
         output: JSON.stringify({ ok: true, detail: 'Research accepted; outreach review captured while calls are underway' }),
@@ -471,8 +474,11 @@ export class SailPlanner implements GroupPlanner {
       const fallback = researchFallbackPreparation(session, researched, detail, options.replanning);
       for (const insight of fallback.insights) await this.config.emitReasoning?.(session.id, insight);
       const launchCall = launchOutput.find((item) => item.type === 'function_call' && typeof item.call_id === 'string');
+      const latestHistory = closeDanglingCalls(await this.config.loadHistory(session.id));
       await this.config.saveHistory(session.id, [
-        ...launchInput,
+        ...latestHistory,
+        startTurn,
+        researchTurn,
         ...launchOutput,
         ...(typeof launchCall?.call_id === 'string' ? [{
           type: 'function_call_output',
@@ -609,10 +615,11 @@ export class SailPlanner implements GroupPlanner {
   async recommend(session: Session, options: { emitReasoning?: boolean } = {}): Promise<PlannerDecision> {
     const history = closeDanglingCalls(await this.config.loadHistory(session.id));
     const snapshot = sessionSnapshot(session);
-    const input: ConversationItem[] = [
-      ...history,
-      { role: 'user', content: `Current authoritative coordination state:\n${JSON.stringify(snapshot)}` },
-    ];
+    const stateTurn: ConversationItem = {
+      role: 'user',
+      content: `Current authoritative coordination state:\n${JSON.stringify(snapshot)}`,
+    };
+    const input: ConversationItem[] = [...history, stateTurn];
     const requestInput: ConversationItem[] = [{
       role: 'system',
       content: `You are Badger's long-lived autonomous group coordinator. Use the original research, all prior outreach, current state, prior tool calls, and their results. Choose the best safe candidate and, when there is a conflict, the best participant to negotiate with. For flexibility requests, choose SMS or a targeted CALL and a delay from 0-120 seconds. Proposals and commitments must use SMS. You may change the provisional candidate and flexibility target when the evidence supports it. Never violate a hard veto or reveal private answers. Write concise messages that tell recipients how to respond. The reason field is displayed in the shared UI: make it one concise, group-level decision summary without any participant's private answer, constraint, veto, or flexibility score.`,
@@ -661,7 +668,11 @@ export class SailPlanner implements GroupPlanner {
     if (options.emitReasoning !== false) {
       await this.config.emitReasoning?.(session.id, `Decision · ${decision.reason}`);
     }
-    await this.config.saveHistory(session.id, [...input, ...output]);
+    // Inbound texts and other Sail turns can persist while this multi-second
+    // background response runs — append to the latest history, mirroring
+    // interpretMessage, instead of clobbering it with the entry snapshot.
+    const latestHistory = closeDanglingCalls(await this.config.loadHistory(session.id));
+    await this.config.saveHistory(session.id, [...latestHistory, stateTurn, ...output]);
     return decision;
   }
 
