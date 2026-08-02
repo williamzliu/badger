@@ -13,10 +13,8 @@ import { EventLog } from './events.js';
 import { OpenAIFastInboundPlanner, type InboundMessagePlanner } from './fast-inbound.js';
 import { OpenAIOptionResearcher } from './research.js';
 import {
-  type CoordinationPreparation,
   type GroupPlanner,
   type InboundMessageDecision,
-  type OutreachStep,
   type PlannerDecision,
   SailPlanner,
   type SailCompletionWindow,
@@ -302,7 +300,9 @@ export class LiveCommunications implements Communications {
   async contact(session: Session): Promise<void> {
     // Start the real calls immediately. Research and long-horizon Sail
     // orchestration are useful context, but neither belongs on the ringing
-    // critical path.
+    // critical path. The opening text carries the goal context and the
+    // mandatory STOP opt-out notice, so it goes out alongside the dialing.
+    this.background(this.sendOpeningMessages(session.id));
     this.background(this.callParticipants(session.id, 0));
     if (this.config.planner.prepare) {
       this.preparing.add(session.id);
@@ -481,26 +481,18 @@ export class LiveCommunications implements Communications {
     }
   }
 
-  private async executeOutreachPlan(sessionId: string, preparation: CoordinationPreparation): Promise<void> {
-    await Promise.all(preparation.outreach.map((step) => this.executeOutreachStep(sessionId, step)));
-  }
-
-  private async executeOutreachStep(sessionId: string, step: OutreachStep): Promise<void> {
-    await delay(step.delaySeconds * 1_000, this.abort.signal);
-    let session = this.config.sessions.get(sessionId);
-    let participant = session?.participants.find((item) => item.id === step.participantId);
-    if (!session || !participant || this.abort.signal.aborted || ['COMMITTED', 'CANCELLED'].includes(session.status)) return;
-    if (step.channel !== 'CALL_ONLY') {
-      const message = /\bstop\b/i.test(step.message) ? step.message : `${step.message} Reply STOP to opt out.`;
-      await this.safeSend(session, participant, message, `opening:${session.id}:${participant.id}`);
-    }
-    if (step.channel === 'TEXT_ONLY') return;
-    if (step.channel === 'TEXT_THEN_CALL') await delay(step.callAfterSeconds * 1_000, this.abort.signal);
-    session = this.config.sessions.get(sessionId);
-    participant = session?.participants.find((item) => item.id === step.participantId);
-    if (!session || !participant || this.abort.signal.aborted || !['CONTACTING', 'COLLECTING'].includes(session.status)) return;
-    if (['RESPONDED', 'DECLINED', 'CONFIRMED', 'PROPOSED'].includes(participant.status)) return;
-    await this.placeParticipantCall(session, participant);
+  private async sendOpeningMessages(sessionId: string): Promise<void> {
+    const session = this.config.sessions.get(sessionId);
+    if (!session || this.abort.signal.aborted) return;
+    await Promise.all(session.participants.map(async (participant) => {
+      if (participant.status !== 'TEXTED') return;
+      await this.safeSend(
+        session,
+        participant,
+        MESSAGE_COPY.opening(session.hostName, session.goal),
+        `opening:${session.id}:${participant.id}`,
+      );
+    }));
   }
 
   private async placeParticipantCall(

@@ -240,7 +240,10 @@ for (let attempt = 0; attempt < 20 && !orchestrationEvents.list(orchestrationSes
   await new Promise((resolve) => setTimeout(resolve, 2));
 }
 assert.equal(orchestrationStore.get(orchestrationSession.id)?.candidates[0]?.theater, 'K1 Speed');
-assert.equal(sentBodies.length, 0);
+// Calls stay first, but every participant still gets the opening context text
+// with the mandatory opt-out notice.
+assert.equal(sentBodies.length, 1);
+assert.match(sentBodies[0]!, /STOP/);
 assert.equal(orchestrationEvents.list(orchestrationSession.id).some((event) => event.type === 'research.completed'), true);
 assert.equal(orchestrationEvents.list(orchestrationSession.id).some((event) => event.type === 'call.requested'), true);
 await orchestrated.stop();
