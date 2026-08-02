@@ -29,6 +29,20 @@ export function formatCandidateTime(value: string): string {
   return `${dayLabel(Number(match[1]), Number(match[2]), Number(match[3]))} at ${clockLabel(hour, minute)}`;
 }
 
+/** Machine slot tokens ("thursday_evening", "friday_after_8",
+ * "every_evening_6_to_10") occasionally leak into user-facing copy via model
+ * output or availability echoes. Rewrite them as natural language wherever
+ * text is about to reach a person. */
+const SLOT_TOKEN =
+  /\b(?:every|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|weekday)(?:_[a-z0-9]+)+\b/g;
+
+export function humanizeSlotText(text: string): string {
+  return text.replace(SLOT_TOKEN, (token) => {
+    const words = token.replaceAll('_', ' ');
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  });
+}
+
 export function formatCandidateLabel(value: string): string {
   const words = value.trim().replaceAll('_', ' ').replaceAll('-', ' ').replace(/\s+/g, ' ');
   if (!words) return '';

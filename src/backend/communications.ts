@@ -8,6 +8,7 @@ import {
   sendBadgerMessage,
   type InboundMessageIntent,
 } from '../voice/spectrum.js';
+import { humanizeSlotText } from '../shared/display.js';
 import { CartesiaWebhookProcessor, type WebhookProcessResult } from '../voice/webhooks.js';
 import { EventLog } from './events.js';
 import { OpenAIFastInboundPlanner, type InboundMessagePlanner } from './fast-inbound.js';
@@ -512,7 +513,8 @@ export class LiveCommunications implements Communications {
       const metadata: CallMetadata = {
         ...callMetadata(session, participant),
         ...(options.purpose ? { purpose: options.purpose } : {}),
-        ...(options.question ? { question: options.question } : {}),
+        // The voice agent speaks this question aloud — never slot tokens.
+        ...(options.question ? { question: humanizeSlotText(options.question) } : {}),
       };
       const placed = await requestBadgerCall(this.config.cartesia, {
         to: participant.phone,
@@ -1017,7 +1019,9 @@ export class LiveCommunications implements Communications {
   private send(participant: Participant, body: string, idempotencyKey: string) {
     return sendBadgerMessage(this.config.spectrum, {
       to: participant.phone,
-      body,
+      // Model-written replies can echo machine slot tokens ("thursday_evening");
+      // texts always read as natural language.
+      body: humanizeSlotText(body),
       sessionId: participant.sessionId,
       participantId: participant.id,
       idempotencyKey,

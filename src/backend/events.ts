@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { BadgerEvent } from '../shared/types.js';
+import { humanizeSlotText } from '../shared/display.js';
 type Subscriber = (event: BadgerEvent) => void;
 export type PublicEvent = Omit<BadgerEvent, 'privateData'>;
 
@@ -29,16 +30,18 @@ export class EventLog {
   }
 
   record(event: BadgerEvent): boolean {
+    // publicMessage is rendered to people; machine slot tokens never are.
+    const sanitized: BadgerEvent = { ...event, publicMessage: humanizeSlotText(event.publicMessage) };
     const result = this.db.prepare('INSERT OR IGNORE INTO events VALUES (?, ?, ?, ?, ?, ?)').run(
-      event.id,
-      event.sessionId,
-      event.type,
-      event.timestamp,
-      event.publicMessage,
-      JSON.stringify(event.privateData),
+      sanitized.id,
+      sanitized.sessionId,
+      sanitized.type,
+      sanitized.timestamp,
+      sanitized.publicMessage,
+      JSON.stringify(sanitized.privateData),
     );
     if (result.changes === 0) return false;
-    this.subscribers.get(event.sessionId)?.forEach(subscriber=>subscriber(event));
+    this.subscribers.get(sanitized.sessionId)?.forEach(subscriber=>subscriber(sanitized));
     return true;
   }
 

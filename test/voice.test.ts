@@ -15,7 +15,7 @@ import {
   type SpectrumTransportFactory,
 } from "../src/voice/spectrum.js";
 import type { BadgerEvent, CallMetadata } from "../src/shared/types.js";
-import { formatCandidateLabel, formatCandidateTime } from "../src/shared/display.js";
+import { formatCandidateLabel, formatCandidateTime, humanizeSlotText } from "../src/shared/display.js";
 
 const metadata: CallMetadata = {
   sessionId: "session_123",
@@ -30,6 +30,12 @@ test("candidate timestamps are rendered as natural scheduling copy", () => {
   assert.equal(formatCandidateTime("2026-08-02 18:00"), "Sunday, Aug 2 at 6 PM");
   assert.doesNotMatch(formatCandidateTime("2026-08-02T12:33:26.310Z"), /T|Z/);
   assert.equal(formatCandidateLabel("arrive_and_drive"), "Arrive & drive");
+  assert.equal(
+    humanizeSlotText("Would thursday_evening work? Or friday_after_8?"),
+    "Would Thursday evening work? Or Friday after 8?",
+  );
+  assert.equal(humanizeSlotText("every_evening_6_to_10 is out"), "Every evening 6 to 10 is out");
+  assert.equal(humanizeSlotText("session_id stays untouched"), "session_id stays untouched");
 });
 
 test("Cartesia call uses the current API contract and emits call.requested", async () => {
