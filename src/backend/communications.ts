@@ -829,6 +829,20 @@ export class LiveCommunications implements Communications {
     if (intent !== 'confirm' && !confirmsActiveOption) return;
     const previousStatus = session.status;
     if (session.status === 'RESOLVING' && participant.status === 'NEEDS_FOLLOWUP') {
+      // On the broaden path there is no selected candidate — a bare "sounds
+      // good" answers the "what other day could work?" ask with nothing
+      // actionable, and acceptFlexibility would throw. Ask for a concrete
+      // window instead of dropping the reply.
+      const active = session.candidates.find((item) => item.id === session.selectedCandidateId);
+      if (!active || !participant.preferences) {
+        await this.safeSend(
+          session,
+          participant,
+          'Great — what day and time works for you? Reply here, or reply STOP to opt out.',
+          `clarify:${session.id}:${participant.id}:${event.id}`,
+        );
+        return;
+      }
       this.config.workflow.acceptFlexibility(session, participant);
       const fresh = this.config.sessions.get(session.id);
       if (fresh) await this.afterPreferences(fresh, previousStatus);
