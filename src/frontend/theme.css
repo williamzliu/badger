@@ -1,16 +1,44 @@
-/* ── Badger · editorial design system ─────────────────────────────── */
-:root {
-  --paper: #faf8f3;
-  --ink: #161511;
-  --ink-2: #77726a;
-  --ink-3: #a39d92;
-  --rule: #d9d4c9;
-  --rule-dot: #e2ddd2;
-  --accent: #c93400;
-  --accent-dim: rgba(201, 52, 0, 0.07);
+/* ── Badger · design system ───────────────────────────────────────────
+   Body: Manrope. Display/headings: Polymath Display (Typekit).
+   Fonts are loaded from the sources the brand ships them from. */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap');
+@import url('https://use.typekit.net/iyx2vwu.css');
 
-  --serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
-  --sans: 'Inter Variable', system-ui, -apple-system, sans-serif;
+:root {
+  /* Surface */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --field: #f5f6f8;
+  --field-border: #eceef1;
+
+  /* Ink */
+  --ink: #101319; /* headings, near-black */
+  --ink-body: #1c2029;
+  --ink-2: #656b78; /* muted labels, statuses */
+  --ink-3: #9aa1ad; /* placeholders, faint */
+
+  /* Brand + state */
+  --navy: #162456;
+  --navy-hover: #1f2f6e;
+  --navy-tint: #eef0f6;
+  --live: #e5484d;
+  --danger: #cf3b2e;
+  --ok: #157a45;
+
+  /* Lines */
+  --border: #e6e8ec;
+  --rule: #ededf1;
+
+  /* Radius */
+  --r-card: 16px;
+  --r: 12px;
+  --r-sm: 8px;
+  --pill: 100px;
+
+  --shadow: 0 1px 2px rgba(16, 18, 24, 0.04), 0 14px 34px -18px rgba(16, 18, 24, 0.18);
+
+  --sans: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'polymath-display', 'Manrope', system-ui, sans-serif;
 }
 
 * {
@@ -25,19 +53,15 @@ body,
 }
 
 body {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--ink-body);
   font-family: var(--sans);
   font-size: 15px;
-  line-height: 1.5;
-  /* Cross-browser parity: both fonts are bundled via @fontsource (never
-     system Georgia/Times unless loading fails), smoothing is normalized
-     for WebKit and Firefox, and synthetic bold/italic is disabled so no
-     browser fakes weights Instrument Serif doesn't ship. */
+  line-height: 1.55;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-synthesis: none;
 }
 
 button {
@@ -55,92 +79,147 @@ input {
 }
 
 /* ── Type ─────────────────────────────────────────────────────────── */
-.serif {
-  font-family: var(--serif);
-  font-weight: 400;
+.display {
+  font-family: var(--display);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.02;
 }
 
-.kicker {
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.display-hero {
+  font-family: var(--display);
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.0;
+  font-size: clamp(44px, 6vw, 76px);
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: 0;
+}
+
+.muted {
   color: var(--ink-2);
 }
 
-.smallcaps {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-/* ── Primitives ───────────────────────────────────────────────────── */
-.btn-ink {
+/* ── Buttons ──────────────────────────────────────────────────────── */
+.btn {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  background: var(--ink);
-  color: var(--paper);
-  padding: 13px 24px;
-  font-size: 14px;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  border-radius: 2px;
-  transition: background 150ms ease;
+  border-radius: var(--r);
+  padding: 12px 20px;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease, transform 100ms ease;
 }
 
-.btn-ink:hover {
-  background: #000;
+.btn:active {
+  transform: translateY(1px);
 }
 
-.btn-ink:disabled {
-  opacity: 0.35;
+.btn-primary {
+  background: var(--navy);
+  color: #fff;
+  border-radius: var(--pill);
+}
+
+.btn-primary:hover {
+  background: var(--navy-hover);
+}
+
+.btn-primary:disabled {
+  background: var(--navy);
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.btn-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.btn-lg {
+  font-size: 16px;
+  padding: 15px 28px;
+}
+
+.btn-ghost {
   background: transparent;
-  color: var(--ink);
-  padding: 12px 20px;
-  font-size: 13.5px;
-  font-weight: 600;
-  border: 1px solid var(--ink);
-  border-radius: 2px;
-  transition: background 150ms ease;
+  color: var(--ink-body);
+  border: 1px solid var(--border);
 }
 
-.btn-line:hover {
-  background: rgba(22, 21, 17, 0.05);
+.btn-ghost:hover {
+  background: var(--field);
+  border-color: var(--field-border);
 }
 
-.link {
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.btn-quiet {
+  background: transparent;
   color: var(--ink-2);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--rule);
-  transition: color 150ms ease;
+  font-weight: 600;
+  padding: 8px 4px;
+}
+
+.btn-quiet:hover {
+  color: var(--ink);
+}
+
+/* Inline text link */
+.link {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  transition: color 140ms ease;
 }
 
 .link:hover {
   color: var(--ink);
-  text-decoration-color: var(--ink);
 }
 
+/* Icon-only button (edit / remove / confirm row controls) */
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.icon-btn:hover {
+  background: var(--field);
+  color: var(--ink);
+}
+
+.icon-btn.is-danger:hover {
+  color: var(--danger);
+}
+
+.icon-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.icon-btn:disabled:hover {
+  background: none;
+  color: var(--ink-2);
+}
+
+/* ── Fields ───────────────────────────────────────────────────────── */
 .field {
   width: 100%;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--rule);
-  padding: 9px 1px;
-  transition: border-color 150ms ease;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
+  color: var(--ink-body);
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
 
 .field::placeholder {
@@ -149,21 +228,130 @@ input {
 
 .field:focus {
   outline: none;
-  border-bottom-color: var(--ink);
+  background: #fff;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px rgba(22, 36, 86, 0.1);
+}
+
+/* Borderless field that reads as text until focused (the Idea line) */
+.field-plain {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  color: var(--ink-body);
+}
+
+.field-plain::placeholder {
+  color: var(--ink-3);
+}
+
+.field-plain:focus {
+  outline: none;
 }
 
 button:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--accent);
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--navy);
   outline-offset: 2px;
 }
 
+/* Checkbox — hidden native input + styled box holding a Tabler check */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--ink-body);
+  font-size: 16px;
+}
+
+.check input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.check-box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: #fff;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.check input:checked + .check-box {
+  background: var(--navy);
+  border-color: var(--navy);
+}
+
+/* ── Card ─────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.card-sec {
+  position: relative;
+  padding: 28px 30px;
+}
+
+.card-sec + .card-sec {
+  border-top: 1px solid var(--rule);
+}
+
+/* Section label straddles the section's top border, like a legend. */
+.sec-label {
+  position: absolute;
+  top: 0;
+  left: 20px;
+  transform: translateY(-50%);
+  background: var(--surface);
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+/* ── Brand ────────────────────────────────────────────────────────── */
+.logo {
+  display: block;
+  height: 30px;
+  width: auto;
+}
+
+.brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--navy);
+}
+
+.brand-name {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  color: var(--navy);
+}
+
+/* ── Live dot / pill ──────────────────────────────────────────────── */
 .livedot {
   display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--live);
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
@@ -171,38 +359,25 @@ input:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--accent);
+  color: var(--live);
 }
 
 /* ── Masthead ─────────────────────────────────────────────────────── */
 .masthead {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 24px;
-  padding: 24px 0 16px;
-  border-bottom: 2px solid var(--ink);
-}
-
-.masthead .name {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 29px;
-  line-height: 1;
-}
-
-.mast-brand {
-  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 20px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--rule);
 }
 
-.masthead.kicker-right .kicker {
-  margin-left: auto;
+.masthead .mast-meta {
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
   text-align: right;
 }
 
@@ -216,7 +391,7 @@ input:focus-visible {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;

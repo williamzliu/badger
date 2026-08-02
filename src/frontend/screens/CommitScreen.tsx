@@ -13,8 +13,8 @@ export default function CommitScreen() {
   const confirmed = required.filter((p) => p.status === 'CONFIRMED').length;
 
   return (
-    <div className="commit">
-      <h1 className="commit-headline">
+    <div className="stage is-center">
+      <h1 className="display commit-headline">
         {confirmed}/{required.length} <span className="commit-word">committed.</span>
       </h1>
       {plan && (
@@ -24,8 +24,8 @@ export default function CommitScreen() {
             .join(' · ')}
         </div>
       )}
-      <div className="commit-sub smallcaps">Confirmation texts are on their way</div>
-      <button className="btn-line commit-home" type="button" onClick={discardDraft}>
+      <div className="commit-sub">Confirmation texts are on their way</div>
+      <button className="btn btn-ghost commit-home" type="button" onClick={discardDraft}>
         Start another Badger
       </button>
       <div className="commit-tagline">

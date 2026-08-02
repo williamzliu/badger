@@ -1,3 +1,4 @@
+import { IconCheck } from '@tabler/icons-react';
 import type { Participant, ParticipantStatus } from '../../shared/types';
 import { useBadger, type BadgerSnapshot, type FeedItem } from '../store';
 import { restartSession } from '../actions';
@@ -22,21 +23,23 @@ const ACTIVE: ParticipantStatus[] = ['CALLING', 'IN_CALL', 'NEEDS_FOLLOWUP'];
 const DONE: ParticipantStatus[] = ['RESPONDED', 'CONFIRMED'];
 
 function statusClass(status: ParticipantStatus): string {
-  if (status === 'NEEDS_FOLLOWUP') return 'roster-status smallcaps is-hot';
-  if (status === 'DECLINED') return 'roster-status smallcaps is-declined';
-  if (DONE.includes(status)) return 'roster-status smallcaps is-done';
-  return 'roster-status smallcaps';
+  if (status === 'NEEDS_FOLLOWUP') return 'roster-status is-hot';
+  if (status === 'DECLINED') return 'roster-status is-declined';
+  if (DONE.includes(status)) return 'roster-status is-done';
+  return 'roster-status';
 }
 
 function RosterRow({ participant }: { participant: Participant }) {
+  const done = DONE.includes(participant.status);
   return (
-    <tr>
-      <td className="roster-name">{participant.name}</td>
-      <td className={statusClass(participant.status)}>
+    <div className="roster-row">
+      <span className="roster-name">{participant.name}</span>
+      <span className={statusClass(participant.status)}>
         {ACTIVE.includes(participant.status) && <span className="livedot" />}
+        {done && <IconCheck className="status-check" size={16} stroke={2.4} />}
         {STATUS_TEXT[participant.status] ?? participant.status}
-      </td>
-    </tr>
+      </span>
+    </div>
   );
 }
 
@@ -101,19 +104,19 @@ export default function LiveScreen() {
   const story = narrative(snap);
 
   return (
-    <div className="page" style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+    <div className="page">
       <Masthead
-        kicker={`${session.goal} · for ${session.hostName}`}
+        meta={`${session.goal} · for ${session.hostName}`}
         live={`Live ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}
       />
       <div className="live-head">
-        <h1 className="live-headline">{story.headline}</h1>
+        <h1 className="display live-headline">{story.headline}</h1>
         <div className="live-sub">{story.sub}</div>
-        <button className="btn-line live-reset" type="button" onClick={restartSession}>
+        <button className="btn btn-ghost live-reset" type="button" onClick={restartSession}>
           Start over
         </button>
       </div>
-      <div className="live-grid" style={{ flex: 1 }}>
+      <div className="live-grid">
         <div className="live-left">
           <div className="stat">
             <span className="stat-n">
@@ -124,17 +127,15 @@ export default function LiveScreen() {
               availability received{snap.followUpName ? ', one follow-up out' : ''}
             </span>
           </div>
-          <table className="roster">
-            <tbody>
-              {session.participants.map((p) => (
-                <RosterRow key={p.id} participant={p} />
-              ))}
-            </tbody>
-          </table>
+          <div className="roster">
+            {session.participants.map((p) => (
+              <RosterRow key={p.id} participant={p} />
+            ))}
+          </div>
         </div>
         <div className="live-right">
           <section className="sail-trace" aria-live="polite">
-            <div className="sail-trace-head smallcaps">
+            <div className="sail-trace-head">
               <span className="sail-mark">S</span>
               Sail reasoning
               <span className="livedot" />

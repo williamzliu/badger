@@ -1,7 +1,4 @@
 import { createRoot } from 'react-dom/client';
-import '@fontsource-variable/inter';
-import '@fontsource/instrument-serif';
-import '@fontsource/instrument-serif/400-italic.css';
 import './theme.css';
 import './screens.css';
 import App from './App';

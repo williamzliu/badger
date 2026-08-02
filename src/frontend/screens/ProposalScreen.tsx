@@ -9,11 +9,11 @@ export default function ProposalScreen() {
   const plan = snap.selectedCandidate;
 
   return (
-    <div className="proposal">
-      <span className="kicker">Badger's plan</span>
+    <div className="stage is-center">
+      <span className="plan-label">Badger&rsquo;s plan</span>
       {plan ? (
         <>
-          <h1 className="plan-time">{formatCandidateTime(plan.time)}</h1>
+          <h1 className="display plan-time">{formatCandidateTime(plan.time)}</h1>
           <div className="plan-venue">
             {[plan.theater, plan.format !== 'Activity' ? formatCandidateLabel(plan.format) : null, plan.price > 0 ? `$${plan.price}` : null]
               .filter(Boolean)
@@ -21,22 +21,22 @@ export default function ProposalScreen() {
           </div>
         </>
       ) : (
-        <h1 className="plan-time">{snap.feed[0]?.message ?? 'Finalizing…'}</h1>
+        <h1 className="display plan-time">{snap.feed[0]?.message ?? 'Finalizing…'}</h1>
       )}
 
       <div className="confirm-table">
-        {session.participants.map((p, i) => {
+        {session.participants.map((p) => {
           const confirmed = p.status === 'CONFIRMED';
           const declined = p.status === 'DECLINED';
           return (
-            <div className="confirm-row" key={p.id} style={{ animationDelay: `${i * 90}ms` }}>
+            <div className="confirm-row" key={p.id}>
               <span className="roster-name">{p.name}</span>
               {confirmed ? (
-                <span className="roster-status smallcaps is-done">Confirmed</span>
+                <span className="roster-status is-done">Confirmed</span>
               ) : declined ? (
-                <span className="roster-status smallcaps is-declined">Declined</span>
+                <span className="roster-status is-declined">Declined</span>
               ) : (
-                <span className="roster-status smallcaps is-hot">
+                <span className="roster-status is-hot">
                   <span className="livedot" />
                   Confirming
                 </span>
@@ -45,7 +45,7 @@ export default function ProposalScreen() {
           );
         })}
       </div>
-      <button className="btn-line proposal-reset" type="button" onClick={restartSession}>
+      <button className="btn btn-ghost proposal-reset" type="button" onClick={restartSession}>
         Start over
       </button>
     </div>

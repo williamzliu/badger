@@ -1,23 +1,21 @@
-import BadgerMark from './BadgerMark';
+import Logo from './Logo';
 
 interface MastheadProps {
-  kicker?: string;
+  meta?: string;
   live?: string;
 }
 
-export default function Masthead({ kicker, live }: MastheadProps) {
+export default function Masthead({ meta, live }: MastheadProps) {
   return (
-    <header className={`masthead${live ? ' has-live' : ' kicker-right'}`}>
-      <span className="mast-brand">
-        <BadgerMark size={30} />
-        <span className="name serif">Badger</span>
-      </span>
-      {kicker && <span className="kicker">{kicker}</span>}
+    <header className="masthead">
+      <Logo />
       {live ? (
         <span className="livepill">
           <span className="livedot" />
           {live}
         </span>
+      ) : meta ? (
+        <span className="mast-meta">{meta}</span>
       ) : null}
     </header>
   );
