@@ -30,27 +30,31 @@ export const DEMO_PARTICIPANTS: DraftParticipant[] = [
 ];
 
 /**
- * Preference fixtures by participant index. The last participant is always the
- * blocker: available Saturday only, vetoes Friday night, but highly flexible —
- * which is exactly who the backend's resolver chooses to follow up with.
+ * Preference fixtures by participant index. The demo goal is a weekend plan,
+ * so every window here must be a saturday or sunday slot that
+ * candidatesForGoal actually generates. The last participant is always the
+ * blocker: only free Sunday morning while everyone else converges on Saturday
+ * afternoon, but highly flexible — which is exactly who the backend's resolver
+ * chooses to follow up with. The blocker must not hard-veto the group's slot,
+ * or matching would exclude it entirely instead of negotiating.
  */
 const FIXTURES: Preferences[] = [
   {
-    availability: ['friday_evening', 'saturday_afternoon'],
+    availability: ['saturday_afternoon'],
     hardVetoes: ['saturday_evening'],
     preferences: [],
     flexibility: 0.7,
-    summary: 'Available Friday evening or Saturday afternoon.',
+    summary: 'Available Saturday afternoon.',
   },
   {
-    availability: ['friday_evening'],
+    availability: ['saturday_afternoon'],
     hardVetoes: ['sunday_afternoon'],
     preferences: [],
     flexibility: 0.5,
-    summary: 'Friday evening only.',
+    summary: 'Saturday afternoon only.',
   },
   {
-    availability: ['friday_evening', 'saturday_afternoon', 'sunday_afternoon'],
+    availability: ['saturday_afternoon', 'sunday_morning', 'sunday_afternoon'],
     hardVetoes: [],
     preferences: [],
     flexibility: 0.6,
@@ -59,20 +63,23 @@ const FIXTURES: Preferences[] = [
 ];
 
 export const BLOCKER_PREFS: Preferences = {
-  availability: ['saturday_afternoon'],
-  hardVetoes: ['friday_evening'],
-  preferences: [],
-  flexibility: 0.9,
-  summary: 'Prefers Saturday. Friday evening is tough but negotiable.',
-};
-
-export const BLOCKER_RESOLVED_PREFS: Preferences = {
-  availability: ['saturday_afternoon', 'friday_evening'],
+  availability: ['sunday_morning'],
   hardVetoes: [],
   preferences: [],
   flexibility: 0.9,
-  summary: 'Confirmed Friday evening works after all.',
+  summary: 'Prefers Sunday morning. Saturday afternoon is tough but negotiable.',
 };
+
+export const BLOCKER_RESOLVED_PREFS: Preferences = {
+  availability: ['sunday_morning', 'saturday_afternoon'],
+  hardVetoes: [],
+  preferences: [],
+  flexibility: 0.9,
+  summary: 'Confirmed Saturday afternoon works after all.',
+};
+
+/** The slot the demo resolves onto once the blocker flexes. */
+export const DEMO_WINNER_SLOT = 'saturday_afternoon';
 
 export function isBlocker(session: Session, participant: Participant): boolean {
   return session.participants[session.participants.length - 1]?.id === participant.id;
