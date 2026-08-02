@@ -6,6 +6,7 @@ import {
   BLOCKER_RESOLVED_PREFS,
   DEMO_GOAL,
   DEMO_HOST,
+  DEMO_HOST_PHONE,
   DEMO_PARTICIPANTS,
   isBlocker,
   prefsFor,
@@ -25,18 +26,37 @@ export function setMode(next: Mode) {
 }
 
 export function demoDraft(): DraftInput {
-  return { hostName: DEMO_HOST, goal: DEMO_GOAL, participants: [...DEMO_PARTICIPANTS] };
+  return {
+    hostName: DEMO_HOST,
+    hostPhone: DEMO_HOST_PHONE,
+    goal: DEMO_GOAL,
+    participants: [...DEMO_PARTICIPANTS],
+  };
 }
 
 export async function createDraft(input: DraftInput): Promise<void> {
   badger.setError(null);
+  // The host is a participant too — Badger calls them like everyone else.
+  const participants =
+    input.hostPhone && !input.participants.some((p) => p.name === input.hostName)
+      ? [{ name: input.hostName, phone: input.hostPhone, required: true }, ...input.participants]
+      : input.participants;
+  const full = { ...input, participants };
   try {
-    if (mode() === 'mock') driver.createDraft(input);
-    else await api.createSession(input);
+    if (mode() === 'mock') driver.createDraft(full);
+    else await api.createSession(full);
   } catch (error) {
     badger.setError((error as Error).message);
     throw error;
   }
+}
+
+/** Abandon the current draft and return to the create form. */
+export function discardDraft() {
+  badger.setError(null);
+  if (mode() === 'mock') driver.clear();
+  else api.clearSession();
+  badger.reset();
 }
 
 export async function sendBadger(): Promise<void> {

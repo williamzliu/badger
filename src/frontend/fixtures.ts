@@ -1,6 +1,7 @@
 import type { Candidate, Participant, Preferences, Session } from '../shared/types';
 
 export const DEMO_HOST = 'Kaustubh';
+export const DEMO_HOST_PHONE = '+1 415 555 0100';
 export const DEMO_GOAL = 'See The Odyssey this weekend';
 
 export interface DraftParticipant {
@@ -11,16 +12,17 @@ export interface DraftParticipant {
 
 export interface DraftInput {
   hostName: string;
+  hostPhone?: string;
   goal: string;
   participants: DraftParticipant[];
 }
 
-// TODO(demo): swap for the three real participant phones + one seeded number.
+// The host is prepended as a participant at draft time (Badger calls you too).
+// TODO(demo): swap for the three real participant phones.
 export const DEMO_PARTICIPANTS: DraftParticipant[] = [
   { name: 'Sam', phone: '+1 415 555 0101', required: true },
-  { name: 'Kaustubh', phone: '+1 415 555 0102', required: true },
-  { name: 'Jessica', phone: '+1 415 555 0103', required: true },
-  { name: 'William', phone: '+1 415 555 0104', required: true },
+  { name: 'Jessica', phone: '+1 415 555 0102', required: true },
+  { name: 'William', phone: '+1 415 555 0103', required: true },
 ];
 
 // Slots mirror src/backend/mocks.ts so live-mode injection produces the same story.

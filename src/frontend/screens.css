@@ -38,10 +38,23 @@
   margin-bottom: 6px;
 }
 
-.host-field {
-  max-width: 320px;
+.host-grid {
+  display: grid;
+  grid-template-columns: minmax(200px, 300px) minmax(200px, 300px);
+  gap: 26px;
   margin-bottom: 38px;
+}
+
+.host-grid .field {
   font-size: 16px;
+}
+
+.form-problems {
+  margin: 18px 0 0;
+  padding-left: 18px;
+  color: var(--accent);
+  font-size: 14.5px;
+  line-height: 1.7;
 }
 
 .p-table {

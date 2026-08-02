@@ -70,6 +70,15 @@ export class MockDriver {
     if (this.lastDraft) this.createDraft(this.lastDraft);
   }
 
+  /** Drop the session entirely (back to the create form). */
+  clear() {
+    this.stopTimer();
+    this.playing = false;
+    this.session = null;
+    this.steps = [];
+    this.index = 0;
+  }
+
   preset(preset: PresetId, participantId?: string) {
     const session = this.session;
     if (!session) return;
